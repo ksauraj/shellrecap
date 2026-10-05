@@ -16,6 +16,7 @@ import (
 	"github.com/ksauraj/shellrecap/internal/cache"
 	"github.com/ksauraj/shellrecap/internal/gemini"
 	"github.com/ksauraj/shellrecap/internal/render"
+	"github.com/ksauraj/shellrecap/internal/theme"
 	"github.com/ksauraj/shellrecap/internal/types"
 )
 
@@ -508,11 +509,10 @@ func (m Model) View() string {
 	}
 
 	// Header with title and version
-	header := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86")).
-		Padding(0, 1).
-		Render(">_ shellrecap " + appVersion)
+	header := lipgloss.NewStyle().Padding(0, 1).Render(
+		lipgloss.NewStyle().Bold(true).Foreground(theme.Peach).Render(">_") + " " +
+			lipgloss.NewStyle().Bold(true).Foreground(theme.Mauve).Render("shellrecap") + " " +
+			theme.Faint.Render(appVersion))
 
 	// Render tabs
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)
@@ -523,10 +523,19 @@ func (m Model) View() string {
 		help = "←→: slides • Space: pause • Tab: views • r: refresh • q: quit"
 	}
 	if m.viewport.TotalLineCount() > m.viewport.Height {
-		help = fmt.Sprintf("%3.0f%% • %s", m.viewport.ScrollPercent()*100, help)
+		percent := m.viewport.ScrollPercent()
+		// The viewport divides by zero when the content is exactly one
+		// line taller than the screen
+		if math.IsNaN(percent) {
+			percent = 0
+			if m.viewport.AtBottom() {
+				percent = 1
+			}
+		}
+		help = fmt.Sprintf("%3.0f%% • %s", percent*100, help)
 	}
 	footer := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(theme.Overlay).
 		Padding(0, 1).
 		MaxWidth(m.width).
 		Render(help + " • By Ksauraj")

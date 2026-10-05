@@ -8,11 +8,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/theme"
 	"github.com/ksauraj/shellrecap/internal/types"
 )
-
-// slideColors gives every slide its own accent color
-var slideColors = []lipgloss.Color{"205", "86", "214", "141", "39", "203", "120", "177", "220"}
 
 // slideWidth is the card width for a terminal of the given width
 func slideWidth(width int) int {
@@ -252,16 +250,16 @@ func peakHourQuip(hour int) string {
 // RenderSlide renders one Wrapped slide centered in a width x height area.
 // frame counts animation ticks since the slide appeared and drives its art.
 func RenderSlide(slide types.Slide, label string, index, total int, autoplay bool, frame, width, height int) string {
-	accent := slideColors[index%len(slideColors)]
+	accent := theme.Accents[index%len(theme.Accents)]
 	inner := slideInner(width)
-	muted := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	muted := theme.Faint
 
 	// Story-style progress bar
 	var progress string
 	if segment := (inner - (total - 1)) / total; segment >= 1 {
 		var segments []string
 		for i := 0; i < total; i++ {
-			style := muted
+			style := theme.Track
 			if i <= index {
 				style = lipgloss.NewStyle().Foreground(accent)
 			}
@@ -285,7 +283,7 @@ func RenderSlide(slide types.Slide, label string, index, total int, autoplay boo
 
 	head := lipgloss.NewStyle().Bold(true).Foreground(accent).Render(slide.Title)
 	if slide.Headline != "" {
-		head += "\n\n" + lipgloss.NewStyle().Bold(true).Render(slide.Headline)
+		head += "\n\n" + theme.Bold.Render(slide.Headline)
 	}
 	// The art sits to the right of the title when there's room for both
 	if len(slide.Art) > 0 {
@@ -300,11 +298,13 @@ func RenderSlide(slide types.Slide, label string, index, total int, autoplay boo
 	parts := []string{progress, top, "", head}
 	if len(slide.Lines) > 0 {
 		parts = append(parts, "")
-		parts = append(parts, slide.Lines...)
+		for _, line := range slide.Lines {
+			parts = append(parts, theme.Normal.Render(line))
+		}
 	}
 	if len(slide.Quotes) > 0 {
 		parts = append(parts, "")
-		quote := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("250"))
+		quote := lipgloss.NewStyle().Italic(true).Foreground(theme.Subtext)
 		for _, q := range slide.Quotes {
 			parts = append(parts, quote.Render("“"+q+"”"))
 		}

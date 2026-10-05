@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ksauraj/shellrecap/internal/theme"
 )
 
 // Every animation here is plain ASCII. An animation is a list of frames,
@@ -37,8 +38,8 @@ var bannerLetters = func() [][]string {
 	return letters
 }()
 
-// bannerWave is the gradient that sweeps across the banner
-var bannerWave = []lipgloss.Color{"24", "31", "38", "45", "51", "87", "123", "87", "51", "45", "38", "31"}
+// bannerWaveWidth is how many columns one sweep of the gradient spans
+const bannerWaveWidth = 24
 
 // messageTicks is how long each loading message stays up, so all of them
 // show once during the 4 second splash
@@ -63,19 +64,23 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 		lines[i] = strings.Join(row, "")
 	}
 
-	// Color each column by a gradient that moves with the frame
+	// Sweep the sunset gradient across the banner, there and back again
 	var banner strings.Builder
 	for i, line := range lines {
 		if i > 0 {
 			banner.WriteString("\n")
 		}
 		for col, ch := range line {
-			c := bannerWave[((col-frame*2)%len(bannerWave)+len(bannerWave))%len(bannerWave)]
+			pos := ((col-frame)%(2*bannerWaveWidth) + 2*bannerWaveWidth) % (2 * bannerWaveWidth)
+			if pos >= bannerWaveWidth {
+				pos = 2*bannerWaveWidth - 1 - pos
+			}
+			c := theme.Gradient(float64(pos) / float64(bannerWaveWidth-1))
 			banner.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render(string(ch)))
 		}
 	}
 
-	subtitle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("your year in the terminal")
+	subtitle := lipgloss.NewStyle().Italic(true).Foreground(theme.Flamingo).Render("your year in the terminal")
 
 	// A block bouncing back and forth
 	const track, block = 24, 6
@@ -89,11 +94,11 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 	if refreshing && frame < messageTicks {
 		message = "refreshing everything, skipping the cache"
 	}
-	status := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
+	status := theme.Faint.
 		Render(Spinner(frame) + " " + message + strings.Repeat(".", frame/2%4))
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		banner.String(), "", subtitle, "", lipgloss.NewStyle().Foreground(lipgloss.Color("45")).Render(bar), "", status)
+		banner.String(), "", subtitle, "", theme.Fg(theme.Peach).Render(bar), "", status)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, content)
 }
 

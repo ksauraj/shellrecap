@@ -321,3 +321,17 @@ func TestCleanAIText(t *testing.T) {
 		t.Errorf("cleanAIText = %q", got)
 	}
 }
+
+func TestScrollPercentNeverNaN(t *testing.T) {
+	m := testModel(t, "")
+	m.switchTab(0)
+	// Content exactly one line taller than the viewport used to show NaN%
+	m.viewport.SetContent(strings.Repeat("line\n", m.viewport.Height))
+	if view := m.View(); strings.Contains(view, "NaN") {
+		t.Errorf("footer shows NaN:\n%s", view)
+	}
+	m.viewport.GotoBottom()
+	if view := plain(m.View()); !strings.Contains(view, "100%") {
+		t.Errorf("footer doesn't show 100%% at the bottom:\n%s", view)
+	}
+}
