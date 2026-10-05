@@ -3,8 +3,6 @@
 Your year in the terminal. shellrecap is an interactive TUI that reads your shell history and turns
 it into insights about how you work, plus a Spotify-Wrapped style recap of your year.
 
-> Previously named **k8au-shell-analyzer**. Old links to the repository redirect here.
-
 ## Table of Contents
 - [Features](#features)
 - [Installation](#installation)
