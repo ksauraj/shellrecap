@@ -9,7 +9,7 @@ fetch_download_url() {
   echo "Detected OS: $os, Architecture: $arch" >&2
 
   # Fetch the latest release JSON and extract the download URL
-  local url=$(curl -s https://api.github.com/repos/ksauraj/k8au-shell-analyzer/releases/latest | grep -oP '"browser_download_url": "\K[^"]+' | grep "$os" | grep -E "$arch|armv7l|aarch64")
+  local url=$(curl -s https://api.github.com/repos/ksauraj/shellrecap/releases/latest | grep -oP '"browser_download_url": "\K[^"]+' | grep "$os" | grep -E "$arch|armv7l|aarch64")
 
   if [[ -z "$url" ]]; then
     echo "Error: No binary found for OS: $os, Architecture: $arch." >&2
@@ -29,7 +29,7 @@ fetch_download_url() {
 # Function to download and run the binary
 download_and_run() {
   local url=$1
-  local binary_name="k8au-shell-analyser"
+  local binary_name="shellrecap"
 
   echo "Downloading binary from URL: $url" >&2
   if ! curl -L -o "$binary_name" "$url"; then

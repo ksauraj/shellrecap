@@ -1,4 +1,4 @@
-module github.com/ksauraj/k8au-shell-analyzer
+module github.com/ksauraj/shellrecap
 
 go 1.21
 

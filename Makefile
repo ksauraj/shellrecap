@@ -1,5 +1,5 @@
-BINARY := k8au-shell-analyser
-PKG    := github.com/ksauraj/k8au-shell-analyzer
+BINARY := shellrecap
+PKG    := github.com/ksauraj/shellrecap
 
 # The Gemini key is optional: without it the binary falls back to the
 # GEMINI_API_KEY environment variable at runtime
@@ -11,7 +11,7 @@ endif
 .PHONY: build run test clean
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/k8au-shell-analyzer
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/shellrecap
 
 run: build
 	./$(BINARY)

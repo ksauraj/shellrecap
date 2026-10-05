@@ -12,11 +12,11 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/analyzer"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/cache"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/gemini"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/render"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/types"
+	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/cache"
+	"github.com/ksauraj/shellrecap/internal/gemini"
+	"github.com/ksauraj/shellrecap/internal/render"
+	"github.com/ksauraj/shellrecap/internal/types"
 )
 
 const (
@@ -29,6 +29,8 @@ const (
 	revealFrames = 8
 	// minSplash keeps the loading animation from just flashing by
 	minSplash = 900 * time.Millisecond
+
+	appVersion = "v1.1.0"
 )
 
 type aiStatus int
@@ -85,13 +87,13 @@ type Model struct {
 }
 
 func InitialModel() Model {
-	logFile, err := os.OpenFile("shell_analyzer.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	logFile, err := os.OpenFile("shellrecap.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 	logger := log.New(logFile, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 
-	tabs := []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Wrapped", "Timeline"}
+	tabs := []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap", "Timeline"}
 
 	// Like any year-in-review, January still looks back at the year before
 	now := time.Now()
@@ -175,7 +177,7 @@ func (m *Model) restartReveal() tea.Cmd {
 }
 
 func (m Model) onWrappedTab() bool {
-	return m.tabs[m.activeTab] == "Wrapped"
+	return m.tabs[m.activeTab] == "Recap"
 }
 
 func (m *Model) switchTab(tab int) tea.Cmd {
@@ -485,14 +487,14 @@ func (m *Model) syncContent() {
 		content = render.RenderToolUsage(m.shellData.Insights.ToolUsage, m.width, progress)
 	case "Timeline":
 		content = render.RenderTimeline(m.timelineData, m.width, progress)
-	case "Wrapped":
+	case "Recap":
 		slides := m.slides()
 		if m.currentSectionIndex >= len(slides) {
 			m.currentSectionIndex = 0
 		}
-		label := fmt.Sprintf("SHELL WRAPPED %d", m.wrappedYear)
+		label := fmt.Sprintf("SHELLRECAP %d", m.wrappedYear)
 		if m.wrappedStats.AllTime {
-			label = "SHELL WRAPPED"
+			label = "SHELLRECAP"
 		}
 		content = render.RenderSlide(slides[m.currentSectionIndex], label,
 			m.currentSectionIndex, len(slides), m.autoplay, m.frame-m.revealStart, m.viewport.Width, m.viewport.Height)
@@ -510,7 +512,7 @@ func (m Model) View() string {
 		Bold(true).
 		Foreground(lipgloss.Color("86")).
 		Padding(0, 1).
-		Render(">_ K8au Shell Analyzer v1.0.1-beta")
+		Render(">_ shellrecap " + appVersion)
 
 	// Render tabs
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)

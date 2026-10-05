@@ -24,7 +24,7 @@ type Section struct {
 }
 
 // apiKey is set at build time with
-// -ldflags "-X github.com/ksauraj/k8au-shell-analyzer/internal/gemini.apiKey=..."
+// -ldflags "-X github.com/ksauraj/shellrecap/internal/gemini.apiKey=..."
 // and falls back to the GEMINI_API_KEY environment variable
 var apiKey string
 
@@ -57,7 +57,7 @@ func Available() bool {
 	return key() != ""
 }
 
-const systemPrompt = `You write the AI slides of "Shell Wrapped", a Spotify-Wrapped-style recap of a developer's year in the terminal. The slides are shown in a terminal UI, so keep them short and punchy.
+const systemPrompt = `You write the AI slides of shellrecap, a Spotify-Wrapped-style recap of a developer's year in the terminal. The slides are shown in a terminal UI, so keep them short and punchy.
 
 Write exactly 4 slides, in this order:
 1. Persona: invent a creative terminal persona title for them (2-4 words) and justify it with their stats.

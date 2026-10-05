@@ -11,8 +11,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gookit/color"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/analyzer"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/types"
+	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/types"
 	"github.com/muesli/reflow/truncate"
 )
 

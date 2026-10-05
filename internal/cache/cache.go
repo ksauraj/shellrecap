@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ksauraj/k8au-shell-analyzer/internal/gemini"
+	"github.com/ksauraj/shellrecap/internal/gemini"
 )
 
 const (
@@ -29,17 +29,17 @@ type WrappedEntry struct {
 	Sections  []gemini.Section `json:"sections"`
 }
 
-// Dir returns the cache directory. K8AU_CACHE_DIR overrides the platform
-// default (e.g. ~/.cache/k8au-shell-analyzer on Linux).
+// Dir returns the cache directory. SHELLRECAP_CACHE_DIR overrides the
+// platform default (e.g. ~/.cache/shellrecap on Linux).
 func Dir() (string, error) {
-	if dir := os.Getenv("K8AU_CACHE_DIR"); dir != "" {
+	if dir := os.Getenv("SHELLRECAP_CACHE_DIR"); dir != "" {
 		return dir, nil
 	}
 	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "k8au-shell-analyzer"), nil
+	return filepath.Join(base, "shellrecap"), nil
 }
 
 func wrappedPath(year int) (string, error) {

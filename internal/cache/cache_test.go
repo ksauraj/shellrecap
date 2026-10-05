@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ksauraj/k8au-shell-analyzer/internal/gemini"
+	"github.com/ksauraj/shellrecap/internal/gemini"
 )
 
 func TestSaveAndLoadWrapped(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("K8AU_CACHE_DIR", dir)
+	t.Setenv("SHELLRECAP_CACHE_DIR", dir)
 
 	if _, ok := LoadWrapped(2026); ok {
 		t.Fatal("empty cache returned an entry")

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/analyzer"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/types"
+	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/types"
 )
 
 // slideColors gives every slide its own accent color
@@ -44,8 +44,8 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 
 	if s.TotalCommands == 0 {
 		return []types.Slide{{
-			Title:    "Shell Wrapped",
-			Headline: "Nothing to wrap yet",
+			Title:    "shellrecap",
+			Headline: "Nothing to recap yet",
 			Lines:    []string{"No shell history was found for bash, zsh or fish."},
 			Art:      typingArt("history"),
 		}}
@@ -57,10 +57,10 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 	intro := types.Slide{
 		Title:    fmt.Sprintf("Your %d in the Terminal", s.Year),
 		Headline: fmt.Sprintf("%s commands", n(s.TotalCommands)),
-		Art:      typingArt("wrapped"),
+		Art:      typingArt("shellrecap"),
 	}
 	if s.AllTime {
-		intro.Title = "Your Shell History, Wrapped"
+		intro.Title = "Your Shell History, Recapped"
 		intro.Footer = fmt.Sprintf("None of your history is timestamped in %d, so this covers everything found.", s.Year)
 	} else if len(s.UntimedShells) > 0 {
 		intro.Footer = fmt.Sprintf("Your %s history has no timestamps, so it isn't counted here.",

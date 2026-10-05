@@ -1,4 +1,4 @@
-// cmd/k8au-shell-analyzer/main.go
+// cmd/shellrecap/main.go
 package main
 
 import (
@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/bubbletea"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/models"
+	"github.com/ksauraj/shellrecap/internal/models"
 )
 
 func main() {

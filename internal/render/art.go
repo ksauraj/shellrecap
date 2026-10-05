@@ -18,13 +18,24 @@ func Spinner(frame int) string {
 	return string(`|/-\`[frame%4])
 }
 
-// bannerLetters spell K8AU in the figlet "small" font
-var bannerLetters = [][]string{
-	{` _  __`, `| |/ /`, `| ' < `, `|_|\_\`},
-	{` ___ `, `( _ )`, `/ _ \`, `\___/`},
-	{`   _   `, `  /_\  `, ` / _ \ `, `/_/ \_\`},
-	{` _   _ `, `| | | |`, `| |_| |`, ` \___/ `},
-}
+// bannerLetters spell shellrecap in the figlet "small" font
+var bannerLetters = func() [][]string {
+	glyphs := map[rune][]string{
+		's': {`    `, ` ___`, `(_-<`, `/__/`, `    `},
+		'h': {` _    `, `| |_  `, `| ' \ `, `|_||_|`, `      `},
+		'e': {`     `, ` ___ `, `/ -_)`, `\___|`, `     `},
+		'l': {` _ `, `| |`, `| |`, `|_|`, `   `},
+		'r': {`     `, ` _ _ `, `| '_|`, `|_|  `, `     `},
+		'c': {`    `, ` __ `, `/ _|`, `\__|`, `    `},
+		'a': {`      `, ` __ _ `, `/ _` + "`" + ` |`, `\__,_|`, `      `},
+		'p': {`      `, ` _ __ `, `| '_ \`, `| .__/`, `|_|   `},
+	}
+	var letters [][]string
+	for _, ch := range "shellrecap" {
+		letters = append(letters, glyphs[ch])
+	}
+	return letters
+}()
 
 // bannerWave is the gradient that sweeps across the banner
 var bannerWave = []lipgloss.Color{"24", "31", "38", "45", "51", "87", "123", "87", "51", "45", "38", "31"}
@@ -45,7 +56,7 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 		for _, letter := range bannerLetters {
 			row = append(row, letter[i])
 		}
-		lines[i] = strings.Join(row, " ")
+		lines[i] = strings.Join(row, "")
 	}
 
 	// Color each column by a gradient that moves with the frame
@@ -60,7 +71,7 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 		}
 	}
 
-	subtitle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("s h e l l   a n a l y z e r")
+	subtitle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("your year in the terminal")
 
 	// A block bouncing back and forth
 	const track, block = 24, 6

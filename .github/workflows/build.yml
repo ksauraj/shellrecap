@@ -52,7 +52,7 @@ jobs:
             else
               ext=""
             fi
-            output="dist/k8au-shell-analyser-${os}-${arch}${ext}"
+            output="dist/shellrecap-${os}-${arch}${ext}"
             echo "Building for $os/$arch..."
             if [ "$os" == "android" ]; then
               sudo apt-get install gcc-arm-linux-gnueabi
@@ -62,7 +62,7 @@ jobs:
             else
               export CGO_ENABLED=0
             fi
-            GOOS=$os GOARCH=$arch go build -ldflags "-X github.com/ksauraj/k8au-shell-analyzer/internal/gemini.apiKey=$GEMINI_API_KEY" -o $output ./cmd/k8au-shell-analyzer/main.go
+            GOOS=$os GOARCH=$arch go build -ldflags "-X github.com/ksauraj/shellrecap/internal/gemini.apiKey=$GEMINI_API_KEY" -o $output ./cmd/shellrecap
           done
 
       - name: Create release
@@ -82,8 +82,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-android-arm
-          asset_name: k8au-shell-analyser-android-arm
+          asset_path: dist/shellrecap-android-arm
+          asset_name: shellrecap-android-arm
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -92,8 +92,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-android-arm64
-          asset_name: k8au-shell-analyser-android-arm64
+          asset_path: dist/shellrecap-android-arm64
+          asset_name: shellrecap-android-arm64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -102,8 +102,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-linux-amd64
-          asset_name: k8au-shell-analyser-linux-amd64
+          asset_path: dist/shellrecap-linux-amd64
+          asset_name: shellrecap-linux-amd64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -112,8 +112,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-linux-arm
-          asset_name: k8au-shell-analyser-linux-arm
+          asset_path: dist/shellrecap-linux-arm
+          asset_name: shellrecap-linux-arm
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -122,8 +122,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-linux-arm64
-          asset_name: k8au-shell-analyser-linux-arm64
+          asset_path: dist/shellrecap-linux-arm64
+          asset_name: shellrecap-linux-arm64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -132,8 +132,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-windows-amd64.exe
-          asset_name: k8au-shell-analyser-windows-amd64.exe
+          asset_path: dist/shellrecap-windows-amd64.exe
+          asset_name: shellrecap-windows-amd64.exe
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -142,8 +142,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-windows-arm64.exe
-          asset_name: k8au-shell-analyser-windows-arm64.exe
+          asset_path: dist/shellrecap-windows-arm64.exe
+          asset_name: shellrecap-windows-arm64.exe
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -152,8 +152,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-darwin-amd64
-          asset_name: k8au-shell-analyser-darwin-amd64
+          asset_path: dist/shellrecap-darwin-amd64
+          asset_name: shellrecap-darwin-amd64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -162,8 +162,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-darwin-arm64
-          asset_name: k8au-shell-analyser-darwin-arm64
+          asset_path: dist/shellrecap-darwin-arm64
+          asset_name: shellrecap-darwin-arm64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -172,8 +172,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-freebsd-amd64
-          asset_name: k8au-shell-analyser-freebsd-amd64
+          asset_path: dist/shellrecap-freebsd-amd64
+          asset_name: shellrecap-freebsd-amd64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -182,8 +182,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-freebsd-arm64
-          asset_name: k8au-shell-analyser-freebsd-arm64
+          asset_path: dist/shellrecap-freebsd-arm64
+          asset_name: shellrecap-freebsd-arm64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -192,8 +192,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-openbsd-amd64
-          asset_name: k8au-shell-analyser-openbsd-amd64
+          asset_path: dist/shellrecap-openbsd-amd64
+          asset_name: shellrecap-openbsd-amd64
           asset_content_type: application/octet-stream
 
       - name: Upload release assets
@@ -202,6 +202,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/k8au-shell-analyser-openbsd-arm64
-          asset_name: k8au-shell-analyser-openbsd-arm64
+          asset_path: dist/shellrecap-openbsd-arm64
+          asset_name: shellrecap-openbsd-arm64
           asset_content_type: application/octet-stream

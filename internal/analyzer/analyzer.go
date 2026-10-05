@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ksauraj/k8au-shell-analyzer/internal/types"
+	"github.com/ksauraj/shellrecap/internal/types"
 )
 
 // ShellData contains all the analyzed shell data

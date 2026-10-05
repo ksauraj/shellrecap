@@ -13,19 +13,19 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/analyzer"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/cache"
-	"github.com/ksauraj/k8au-shell-analyzer/internal/gemini"
+	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/cache"
+	"github.com/ksauraj/shellrecap/internal/gemini"
 )
 
 // TestMain points the cache at a temporary directory so tests never touch
 // the real one. Tests that need an isolated cache set their own.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "k8au-cache-test")
+	dir, err := os.MkdirTemp("", "shellrecap-cache-test")
 	if err != nil {
 		panic(err)
 	}
-	os.Setenv("K8AU_CACHE_DIR", dir)
+	os.Setenv("SHELLRECAP_CACHE_DIR", dir)
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
@@ -57,7 +57,7 @@ func testModel(t *testing.T, apiKey string) Model {
 		width:       80,
 		height:      30,
 		loading:     true,
-		tabs:        []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Wrapped", "Timeline"},
+		tabs:        []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap", "Timeline"},
 		logger:      log.New(io.Discard, "", 0),
 		wrappedYear: 2026,
 		autoplay:    true,
@@ -123,7 +123,7 @@ func TestWrappedAppendsAISlides(t *testing.T) {
 }
 
 func TestAIResultIsCachedAndReused(t *testing.T) {
-	t.Setenv("K8AU_CACHE_DIR", t.TempDir())
+	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
 	m := testModel(t, "fake-key")
 
 	updated, cmd := m.Update(aiWrappedMsg{
@@ -155,7 +155,7 @@ func TestAIResultIsCachedAndReused(t *testing.T) {
 }
 
 func TestRefreshKeyBypassesCache(t *testing.T) {
-	t.Setenv("K8AU_CACHE_DIR", t.TempDir())
+	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
 	t.Setenv("GEMINI_MODEL", "test-model")
 	stats := analyzer.ComputeWrapped(testData(), 2026)
 	if err := cache.SaveWrapped(cache.WrappedEntry{
@@ -193,7 +193,7 @@ func TestStaleAIResponseIsIgnored(t *testing.T) {
 }
 
 func TestAIErrorFallsBackToCache(t *testing.T) {
-	t.Setenv("K8AU_CACHE_DIR", t.TempDir())
+	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
 	m := testModel(t, "fake-key")
 	cache.SaveWrapped(cache.WrappedEntry{
 		Year: 2026, Model: "test-model", CreatedAt: time.Now().Add(-3 * time.Hour),
