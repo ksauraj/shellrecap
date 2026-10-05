@@ -5,12 +5,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -27,66 +25,162 @@ func AnalyzeShells() tea.Msg {
 
 	for shell, path := range shellPaths {
 		expandedPath := expandPath(path)
-		if history, err := readHistory(expandedPath); err == nil {
+		if history, err := readHistory(shell, expandedPath); err == nil && len(history) > 0 {
 			data.Histories[shell] = history
-			analyzeCommands(history, &data)
 			data.ShellConfigs[shell] = analyzeShellConfigs(shell)
 		}
 	}
 
-	// Analyze tool usage separately
-	var allEntries []CommandEntry
-	for _, history := range data.Histories {
-		allEntries = append(allEntries, history...)
-	}
+	// Analyze all shells together so one shell doesn't overwrite another
+	allEntries := AllEntries(data)
+	analyzeCommands(allEntries, &data)
 	data.Insights.ToolUsage = analyzeToolUsage(allEntries)
 
 	return data
 }
 
-func readHistory(path string) ([]CommandEntry, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
+// AllEntries returns the history entries of every shell
+func AllEntries(data ShellData) []CommandEntry {
+	var all []CommandEntry
+	for _, shell := range SortedShells(data) {
+		all = append(all, data.Histories[shell]...)
 	}
-	defer file.Close()
-
-	var entries []CommandEntry
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		if cmd := cleanHistoryLine(line); cmd != "" {
-			entries = append(entries, CommandEntry{
-				Command:    cmd,
-				Timestamp:  time.Now(), // For simplicity
-				Categories: categorizeCommand(cmd),
-			})
-		}
-	}
-
-	return entries, scanner.Err()
+	return all
 }
 
-func cleanHistoryLine(line string) string {
-	parts := strings.Fields(line)
-	if len(parts) > 0 {
-		return parts[len(parts)-1]
+// SortedShells returns the shells with history, most used first
+func SortedShells(data ShellData) []string {
+	shells := make([]string, 0, len(data.Histories))
+	for shell := range data.Histories {
+		shells = append(shells, shell)
+	}
+	sort.Slice(shells, func(i, j int) bool {
+		a, b := len(data.Histories[shells[i]]), len(data.Histories[shells[j]])
+		if a != b {
+			return a > b
+		}
+		return shells[i] < shells[j]
+	})
+	return shells
+}
+
+func toSet(items ...string) map[string]bool {
+	set := make(map[string]bool, len(items))
+	for _, item := range items {
+		set[item] = true
+	}
+	return set
+}
+
+// languagePrograms maps executables to the language their use indicates
+var languagePrograms = map[string]string{
+	"python": "Python", "python3": "Python", "python2": "Python", "pip": "Python", "pip3": "Python",
+	"pipx": "Python", "uv": "Python", "poetry": "Python", "ipython": "Python", "jupyter": "Python", "pytest": "Python",
+	"node": "JavaScript", "npm": "JavaScript", "npx": "JavaScript", "yarn": "JavaScript", "pnpm": "JavaScript",
+	"bun": "JavaScript", "deno": "JavaScript", "tsc": "TypeScript", "ts-node": "TypeScript",
+	"go": "Go", "gofmt": "Go",
+	"cargo": "Rust", "rustc": "Rust", "rustup": "Rust",
+	"java": "Java", "javac": "Java", "mvn": "Java", "gradle": "Java", "gradlew": "Java", "./gradlew": "Java",
+	"kotlin": "Kotlin", "kotlinc": "Kotlin",
+	"ruby": "Ruby", "gem": "Ruby", "bundle": "Ruby", "rails": "Ruby", "irb": "Ruby", "rake": "Ruby",
+	"php": "PHP", "composer": "PHP",
+	"gcc": "C/C++", "g++": "C/C++", "clang": "C/C++", "clang++": "C/C++", "cc": "C/C++", "cmake": "C/C++",
+	"dotnet": "C#", "swift": "Swift", "swiftc": "Swift", "lua": "Lua", "perl": "Perl",
+	"R": "R", "Rscript": "R", "julia": "Julia",
+	"ghc": "Haskell", "ghci": "Haskell", "stack": "Haskell", "cabal": "Haskell",
+	"elixir": "Elixir", "mix": "Elixir", "iex": "Elixir", "erl": "Erlang",
+	"zig": "Zig", "nim": "Nim", "dart": "Dart", "flutter": "Dart",
+	"scala": "Scala", "sbt": "Scala", "ocaml": "OCaml", "dune": "OCaml",
+}
+
+var editorPrograms = toSet("vim", "vi", "nvim", "emacs", "emacsclient", "code", "codium", "cursor", "zed",
+	"nano", "micro", "hx", "helix", "subl", "kak", "gedit", "kate", "pico")
+
+var buildToolPrograms = toSet("make", "cmake", "ninja", "meson", "bazel", "mvn", "gradle", "gradlew", "./gradlew",
+	"ant", "sbt", "npm", "yarn", "pnpm", "bun", "pip", "pip3", "poetry", "uv", "cargo", "composer", "bundle", "mix")
+
+var devopsPrograms = toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx", "kubens", "helm",
+	"minikube", "kind", "k3s", "oc", "eksctl", "terraform", "tofu", "terragrunt", "pulumi", "ansible",
+	"ansible-playbook", "vagrant", "packer", "aws", "az", "gcloud", "gsutil", "doctl", "flyctl", "fly",
+	"vercel", "netlify", "heroku", "wrangler")
+
+// skillDomains groups programs into broader areas of expertise
+var skillDomains = []struct {
+	name     string
+	programs map[string]bool
+}{
+	{"Version Control", toSet("git", "gh", "glab", "svn", "hg", "lazygit", "tig")},
+	{"Containers & Kubernetes", toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx",
+		"kubens", "helm", "minikube", "kind", "k3s", "oc", "eksctl")},
+	{"Cloud CLIs", toSet("aws", "az", "gcloud", "gsutil", "doctl", "flyctl", "fly", "vercel", "netlify",
+		"heroku", "wrangler")},
+	{"Infrastructure as Code", toSet("terraform", "tofu", "terragrunt", "pulumi", "ansible",
+		"ansible-playbook", "vagrant", "packer")},
+	{"System Administration", toSet("systemctl", "journalctl", "service", "apt", "apt-get", "apt-fast", "dpkg",
+		"dnf", "yum", "pacman", "yay", "paru", "brew", "snap", "flatpak", "zypper", "mount", "umount", "chmod",
+		"chown", "useradd", "usermod", "crontab", "dmesg", "lsblk", "fdisk", "htop", "top", "btop", "ps",
+		"kill", "pkill", "killall", "df", "du", "free")},
+	{"Networking", toSet("ssh", "scp", "rsync", "sftp", "curl", "wget", "ping", "traceroute", "dig",
+		"nslookup", "nc", "ncat", "nmap", "ip", "ifconfig", "netstat", "ss", "iptables", "ufw", "tailscale", "wg")},
+	{"Databases", toSet("mysql", "psql", "pg_dump", "mongo", "mongosh", "redis-cli", "sqlite3", "clickhouse-client")},
+	{"Android & Mobile", toSet("adb", "fastboot", "flutter", "emulator", "scrcpy", "apktool", "sdkmanager")},
+}
+
+// subcommandTools are programs whose first argument is a subcommand worth
+// tracking, e.g. "git commit" or "docker compose"
+var subcommandTools = toSet("git", "gh", "docker", "docker-compose", "podman", "kubectl", "helm", "npm", "yarn",
+	"pnpm", "bun", "cargo", "go", "az", "aws", "gcloud", "terraform", "tofu", "systemctl", "apt", "apt-get",
+	"brew", "pip", "pip3", "uv", "poetry", "adb", "fastboot", "snap", "flatpak", "dnf", "pacman", "make")
+
+var subcommandPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// flagsWithValue are global flags that take a separate value, like
+// "git -C dir" or "kubectl -n namespace"
+var flagsWithValue = toSet("-C", "-c", "-n", "--namespace", "-f", "--file", "--context", "--kubeconfig",
+	"-H", "--host", "-p", "--project-name", "--git-dir", "--work-tree", "--profile", "--region")
+
+// Subcommand returns the subcommand of a command like "git commit -m x",
+// or "" when the program isn't one with subcommands
+func Subcommand(entry CommandEntry) string {
+	if !subcommandTools[entry.Program] {
+		return ""
+	}
+	fields := strings.Fields(entry.Command)
+	for i, field := range fields {
+		if filepath.Base(field) != entry.Program {
+			continue
+		}
+		args := fields[i+1:]
+		for j := 0; j < len(args); j++ {
+			arg := args[j]
+			if strings.HasPrefix(arg, "-") {
+				// Skip global flags like "git -C dir"
+				if flagsWithValue[arg] {
+					j++
+				}
+				continue
+			}
+			if subcommandPattern.MatchString(arg) {
+				return arg
+			}
+			return ""
+		}
+		return ""
 	}
 	return ""
 }
 
-func categorizeCommand(cmd string) []string {
+func categorizeCommand(program string) []string {
 	categories := []string{}
 	patterns := map[string][]string{
-		"development": {"git", "docker", "npm", "go", "python"},
+		"development": {"git", "docker", "npm", "go", "python", "python3"},
 		"system":      {"sudo", "systemctl", "ps", "top"},
 		"file":        {"ls", "cd", "cp", "mv", "rm"},
 	}
 
-	for category, patterns := range patterns {
-		for _, pattern := range patterns {
-			if strings.HasPrefix(cmd, pattern) {
+	for category, programs := range patterns {
+		for _, p := range programs {
+			if program == p {
 				categories = append(categories, category)
 				break
 			}
@@ -99,155 +193,156 @@ func categorizeCommand(cmd string) []string {
 func analyzeCommands(entries []CommandEntry, data *ShellData) {
 	// Initialize maps for analysis
 	langUsage := make(map[string]int)
-	toolUsage := make(map[string]int)
+	techUsage := make(map[string]int)
+	domainUsage := make(map[string]int)
+	workflows := make(map[string]int)
 	timeOfDay := make(map[int]int)
 	commandPatterns := make(map[string]int)
 
-	// Get installed languages
-	installedLangs := getInstalledLanguages()
-
 	// Analyze each command
 	for _, entry := range entries {
-		cmd := entry.Command
-		hour := entry.Timestamp.Hour()
-		timeOfDay[hour]++
+		program := entry.Program
+		if program == "" {
+			continue
+		}
+		data.CommonCmds[program]++
 
-		// Language usage analysis
-		for lang := range installedLangs {
-			if strings.Contains(cmd, lang) ||
-				strings.Contains(cmd, getPackageManager(lang)) {
-				langUsage[lang]++
-			}
+		// Entries without a timestamp would all land on midnight
+		if !entry.Timestamp.IsZero() {
+			timeOfDay[entry.Timestamp.Hour()]++
+			data.Insights.WorkPatterns.HourlyActivity[entry.Timestamp.Hour()]++
 		}
 
-		// Development tool analysis
-		tools := []string{"git", "docker", "kubectl", "terraform", "ansible", "make"}
-		for _, tool := range tools {
-			if strings.HasPrefix(cmd, tool) && checkToolInstalled(tool) {
-				toolUsage[tool]++
+		lang, isLang := languagePrograms[program]
+		if isLang {
+			langUsage[lang]++
+		}
+		isTech := isLang || devopsPrograms[program] || editorPrograms[program] || buildToolPrograms[program]
+		for _, domain := range skillDomains {
+			if domain.programs[program] {
+				domainUsage[domain.name]++
+				isTech = isTech || domain.name == "Version Control" || domain.name == "Databases"
 			}
+		}
+		if isTech {
+			techUsage[program]++
+		}
+		if sub := Subcommand(entry); sub != "" {
+			workflows[program+" "+sub]++
 		}
 
 		// Analyze command patterns
-		analyzeCommandPattern(cmd, commandPatterns)
+		analyzeCommandPattern(entry.Command, commandPatterns)
 	}
 
 	// Update TechnicalProfile
 	techProfile := &data.Insights.TechnicalProfile
+	languages := SortedCounts(langUsage)
 
-	// Calculate primary role based on most used language/tool
-	if primaryLang, ok := getMostUsed(langUsage); ok {
-		techProfile.PrimaryRole = fmt.Sprintf("%s Developer", strings.Title(primaryLang))
-	}
-
-	// Calculate tech stack
 	techProfile.TechStack = make([]string, 0)
-	for lang := range installedLangs {
-		if langUsage[lang] > 0 {
-			techProfile.TechStack = append(techProfile.TechStack, lang)
+	for _, lang := range languages {
+		if lang.Count >= 3 && len(techProfile.TechStack) < 8 {
+			techProfile.TechStack = append(techProfile.TechStack, lang.Name)
 		}
 	}
 
-	// Calculate proficiency
-	totalCommands := len(entries)
-	if totalCommands > 0 {
-		for lang, count := range langUsage {
-			techProfile.Proficiency[lang] = float64(count) / float64(totalCommands)
-		}
-		for tool, count := range toolUsage {
-			techProfile.Proficiency[tool] = float64(count) / float64(totalCommands)
+	techProfile.SecondarySkills = make([]UsageCount, 0)
+	for _, domain := range SortedCounts(domainUsage) {
+		if domain.Count >= 10 {
+			techProfile.SecondarySkills = append(techProfile.SecondarySkills, domain)
 		}
 	}
+
+	techProfile.TopTech = TopN(SortedCounts(techUsage), 10)
+	techProfile.PrimaryRole = primaryRole(languages, domainUsage)
 
 	// Update WorkPatterns
 	patterns := &data.Insights.WorkPatterns
 	patterns.PeakHours = getPeakHours(timeOfDay)
+	patterns.CommonWorkflows = make([]string, 0)
+	for _, wf := range TopN(SortedCounts(workflows), 6) {
+		patterns.CommonWorkflows = append(patterns.CommonWorkflows, fmt.Sprintf("%s (%d×)", wf.Name, wf.Count))
+	}
 
 	// Calculate productivity metrics based on command complexity and variety
 	patterns.Productivity = calculateProductivityMetrics(entries, commandPatterns)
 }
 
-// internal/analyzer/shell_analysis.go
+// primaryRole picks the role that best explains the bulk of the user's commands
+func primaryRole(languages []UsageCount, domainUsage map[string]int) string {
+	type candidate struct {
+		role  string
+		count int
+	}
+	candidates := []candidate{
+		{"DevOps & Cloud Engineer", domainUsage["Containers & Kubernetes"] +
+			domainUsage["Cloud CLIs"] + domainUsage["Infrastructure as Code"]},
+		{"System Administrator", domainUsage["System Administration"]},
+		{"Android Developer", domainUsage["Android & Mobile"]},
+	}
+	if len(languages) > 0 {
+		total := 0
+		for _, lang := range languages {
+			total += lang.Count
+		}
+		// Listed first so it wins ties
+		candidates = append([]candidate{{languages[0].Name + " Developer", total}}, candidates...)
+	}
+
+	best := candidate{}
+	for _, c := range candidates {
+		if c.count > best.count {
+			best = c
+		}
+	}
+	if best.count < 10 {
+		return ""
+	}
+	return best.role
+}
+
 func analyzeToolUsage(entries []CommandEntry) ToolUsage {
 	toolUsage := ToolUsage{
 		Editors:    make(map[string]int),
 		Languages:  make(map[string]int),
 		BuildTools: make(map[string]int),
+		DevOps:     make(map[string]int),
 	}
 
-	// Get installed languages
-	installedLangs := getInstalledLanguages()
-
-	// Analyze each command
+	// Count by the program actually being run, not by substring matches
 	for _, entry := range entries {
-		cmd := entry.Command
-
-		// Language usage analysis
-		for lang := range installedLangs {
-			if strings.Contains(cmd, lang) ||
-				strings.Contains(cmd, getPackageManager(lang)) {
-				toolUsage.Languages[lang]++
-			}
+		program := entry.Program
+		if lang, ok := languagePrograms[program]; ok {
+			toolUsage.Languages[lang]++
 		}
-
-		// Editor usage analysis
-		editors := []string{"vim", "nvim", "emacs", "code", "nano"}
-		for _, editor := range editors {
-			if strings.HasPrefix(cmd, editor) && checkToolInstalled(editor) {
-				toolUsage.Editors[editor]++
-			}
+		if editorPrograms[program] {
+			toolUsage.Editors[program]++
 		}
-
-		// Build tool usage analysis
-		buildTools := []string{"make", "maven", "gradle", "npm", "yarn", "pip", "cargo", "composer", "bundler"}
-		for _, tool := range buildTools {
-			if strings.HasPrefix(cmd, tool) && checkToolInstalled(tool) {
-				toolUsage.BuildTools[tool]++
-			}
+		if buildToolPrograms[program] {
+			toolUsage.BuildTools[program]++
+		}
+		if devopsPrograms[program] {
+			toolUsage.DevOps[program]++
 		}
 	}
 
 	return toolUsage
 }
 
-func getPackageManager(lang string) string {
-	managers := map[string]string{
-		"python": "pip",
-		"node":   "npm",
-		"go":     "go get",
-		"rust":   "cargo",
-		"ruby":   "gem",
-		"php":    "composer",
-	}
-	return managers[lang]
+// commandPatternMap defines common command patterns
+var commandPatternMap = map[string]*regexp.Regexp{
+	"git_workflow": regexp.MustCompile(`git (commit|push|pull|merge)`),
+	"build":        regexp.MustCompile(`(make|build|compile)`),
+	"deploy":       regexp.MustCompile(`(deploy|kubectl|docker)`),
+	"test":         regexp.MustCompile(`test|spec|pytest`),
 }
 
 func analyzeCommandPattern(cmd string, patterns map[string]int) {
-	// Define common command patterns
-	patternMap := map[string]*regexp.Regexp{
-		"git_workflow": regexp.MustCompile(`git (commit|push|pull|merge)`),
-		"build":        regexp.MustCompile(`(make|build|compile)`),
-		"deploy":       regexp.MustCompile(`(deploy|kubectl|docker)`),
-		"test":         regexp.MustCompile(`test|spec|pytest`),
-	}
-
-	for pattern, regex := range patternMap {
+	for pattern, regex := range commandPatternMap {
 		if regex.MatchString(cmd) {
 			patterns[pattern]++
 		}
 	}
-}
-
-func getMostUsed(usage map[string]int) (string, bool) {
-	var maxKey string
-	var maxVal int
-	for k, v := range usage {
-		if v > maxVal {
-			maxKey = k
-			maxVal = v
-		}
-	}
-	return maxKey, maxVal > 0
 }
 
 func getPeakHours(timeOfDay map[int]int) []int {
@@ -262,7 +357,10 @@ func getPeakHours(timeOfDay map[int]int) []int {
 	}
 
 	sort.Slice(hours, func(i, j int) bool {
-		return hours[i].count > hours[j].count
+		if hours[i].count != hours[j].count {
+			return hours[i].count > hours[j].count
+		}
+		return hours[i].hour < hours[j].hour
 	})
 
 	// Return top 3 peak hours
@@ -283,10 +381,15 @@ func calculateProductivityMetrics(entries []CommandEntry, patterns map[string]in
 
 	// Command variety score
 	uniqueCommands := make(map[string]bool)
+	pipelines := 0
 	for _, entry := range entries {
 		uniqueCommands[entry.Command] = true
+		if strings.Contains(entry.Command, "|") {
+			pipelines++
+		}
 	}
 	metrics["Command Variety"] = float64(len(uniqueCommands)) / float64(totalCommands)
+	metrics["Pipeline Usage"] = float64(pipelines) / float64(totalCommands)
 
 	// Workflow complexity score
 	workflowScore := float64(patterns["git_workflow"]+patterns["build"]+
@@ -294,127 +397,6 @@ func calculateProductivityMetrics(entries []CommandEntry, patterns map[string]in
 	metrics["Workflow Complexity"] = workflowScore
 
 	return metrics
-}
-
-func checkToolInstalled(tool string) bool {
-	_, err := exec.LookPath(tool)
-	return err == nil
-}
-
-func getInstalledLanguages() map[string]string {
-	languages := map[string]string{
-		// Programming Languages
-		"python":  "python --version",
-		"python3": "python3 --version",
-		"node":    "node --version",
-		"go":      "go version",
-		"java":    "java -version",
-		"ruby":    "ruby --version",
-		"php":     "php --version",
-		"rust":    "rustc --version",
-		"perl":    "perl --version",
-		"scala":   "scala -version",
-		"kotlin":  "kotlin -version",
-		"swift":   "swift --version",
-		"r":       "R --version",
-		"julia":   "julia --version",
-		"haskell": "ghc --version",
-		"elixir":  "elixir --version",
-		"erlang":  "erl -version",
-		"clang":   "clang --version",
-		"gcc":     "gcc --version",
-		"dotnet":  "dotnet --version",
-		"lua":     "lua -v",
-		"ocaml":   "ocaml -version",
-		"dart":    "dart --version",
-		"zig":     "zig version",
-		"nim":     "nim --version",
-
-		// Build Tools & Package Managers
-		"maven":    "mvn --version",
-		"gradle":   "gradle --version",
-		"npm":      "npm --version",
-		"yarn":     "yarn --version",
-		"pnpm":     "pnpm --version",
-		"pip":      "pip --version",
-		"cargo":    "cargo --version",
-		"composer": "composer --version",
-		"bundler":  "bundle --version",
-
-		// DevOps & Cloud Tools
-		"docker":    "docker --version",
-		"kubectl":   "kubectl version --client",
-		"terraform": "terraform version",
-		"ansible":   "ansible --version",
-		"vagrant":   "vagrant --version",
-		"helm":      "helm version",
-		"aws":       "aws --version",
-		"gcloud":    "gcloud --version",
-		"azure":     "az --version",
-
-		// Version Control
-		"git":       "git --version",
-		"svn":       "svn --version",
-		"mercurial": "hg --version",
-
-		// Databases
-		"mysql":   "mysql --version",
-		"psql":    "psql --version",
-		"mongodb": "mongod --version",
-		"redis":   "redis-cli --version",
-
-		// Web Servers & Tools
-		"nginx":   "nginx -v",
-		"apache2": "apache2 -v",
-		"curl":    "curl --version",
-		"wget":    "wget --version",
-
-		// Text Editors & IDEs
-		"vim":   "vim --version",
-		"nvim":  "nvim --version",
-		"emacs": "emacs --version",
-		"code":  "code --version",
-
-		// Shell & Terminal Tools
-		"zsh":  "zsh --version",
-		"bash": "bash --version",
-		"fish": "fish --version",
-		"tmux": "tmux -V",
-	}
-
-	installed := make(map[string]string)
-	for lang, cmd := range languages {
-		if out, err := exec.Command("sh", "-c", cmd).Output(); err == nil {
-			installed[lang] = string(out)
-		}
-	}
-
-	// Sort and keep only top 10 most used
-	type usageEntry struct {
-		name  string
-		count int
-	}
-	var usageList []usageEntry
-	for name := range installed {
-		count := 0
-		// Count occurrences in command history (you'll need to pass this data somehow)
-		// For now, we'll just store all installed ones
-		usageList = append(usageList, usageEntry{name, count})
-	}
-
-	// Sort by usage count
-	sort.Slice(usageList, func(i, j int) bool {
-		return usageList[i].count > usageList[j].count
-	})
-
-	// Keep only top 10
-	result := make(map[string]string)
-	for i := 0; i < len(usageList) && i < 10; i++ {
-		name := usageList[i].name
-		result[name] = installed[name]
-	}
-
-	return result
 }
 
 func expandPath(path string) string {

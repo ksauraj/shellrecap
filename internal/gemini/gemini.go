@@ -4,11 +4,13 @@ package gemini
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type WrappedResponse struct {
@@ -18,57 +20,117 @@ type WrappedResponse struct {
 type Section struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
-	Animation   []string `json:"animation"`
 	Quotes      []string `json:"quotes,omitempty"`
 }
 
+// apiKey is set at build time with
+// -ldflags "-X github.com/ksauraj/k8au-shell-analyzer/internal/gemini.apiKey=..."
+// and falls back to the GEMINI_API_KEY environment variable
 var apiKey string
 
-/*
-// Make a .env file while compiling on your local machine with your GEMINI_API_KEY
-func init() {
-	// Load .env file
-	if err := godotenv.Load(); err != nil {
-		panic("Error loading .env file. Please ensure it exists with GEMINI_API_KEY")
-	}
+// defaultModel can be overridden with the GEMINI_MODEL environment variable
+const defaultModel = "gemini-3.8-flash"
 
-	// Get API key from environment
-	apiKey = os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		panic("GEMINI_API_KEY not found in .env file")
+// geminiAPIBase is a variable so tests can point it at a fake server
+var geminiAPIBase = "https://generativelanguage.googleapis.com/v1beta/models/"
+
+// ErrNoAPIKey is returned when no API key was compiled in or set in the environment
+var ErrNoAPIKey = errors.New("no Gemini API key (set GEMINI_API_KEY)")
+
+func key() string {
+	if apiKey != "" {
+		return apiKey
 	}
+	return os.Getenv("GEMINI_API_KEY")
 }
 
-*/
-
-const (
-	geminiAPIURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-)
-
-func GenerateWrapped(data string) (WrappedResponse, error) {
-	payload := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]interface{}{
-					{
-						"text": fmt.Sprintf(`Analyze the following shell data and generate a summary with insights, quotes, and animations in the following JSON format:
-
-{
-  "sections": [
-    {
-      "title": "Section Title",
-      "description": "Section description.",
-      "animation": ["RowAnimation1", "RowAnimation2", ...],
-      "quotes": ["Quote1", "Quote2", ...]
-    },
-    ...
-  ]
+// Model returns the Gemini model in use
+func Model() string {
+	if m := os.Getenv("GEMINI_MODEL"); m != "" {
+		return m
+	}
+	return defaultModel
 }
 
-Shell data: %s`, data),
+// Available reports whether an API key is configured
+func Available() bool {
+	return key() != ""
+}
+
+const systemPrompt = `You write the AI slides of "Shell Wrapped", a Spotify-Wrapped-style recap of a developer's year in the terminal. The slides are shown in a terminal UI, so keep them short and punchy.
+
+Write exactly 4 slides, in this order:
+1. Persona: invent a creative terminal persona title for them (2-4 words) and justify it with their stats.
+2. Roast: a good-natured roast of their habits (typos, clear, sudo, late nights, favourite commands).
+3. Superpower: what they are clearly great at, and the evidence for it.
+4. Forecast: playful predictions for their next year in the terminal.
+
+Rules:
+- Only use numbers that appear in the stats. Never invent numbers, dates or tools.
+- Speak directly to the user as "you".
+- title: at most 40 characters.
+- description: 1-3 sentences, at most 280 characters.
+- quotes: 1-2 witty one-liners per slide, each at most 90 characters, not attributed to anyone.
+- Plain ASCII text only: no emoji, no markdown, no asterisks, no hashtags.`
+
+// responseSchema makes Gemini return JSON matching WrappedResponse
+var responseSchema = map[string]interface{}{
+	"type": "OBJECT",
+	"properties": map[string]interface{}{
+		"sections": map[string]interface{}{
+			"type": "ARRAY",
+			"items": map[string]interface{}{
+				"type": "OBJECT",
+				"properties": map[string]interface{}{
+					"title":       map[string]interface{}{"type": "STRING"},
+					"description": map[string]interface{}{"type": "STRING"},
+					"quotes": map[string]interface{}{
+						"type":  "ARRAY",
+						"items": map[string]interface{}{"type": "STRING"},
 					},
 				},
+				"required": []string{"title", "description", "quotes"},
 			},
+		},
+	},
+	"required": []string{"sections"},
+}
+
+type generateResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text    string `json:"text"`
+				Thought bool   `json:"thought"`
+			} `json:"parts"`
+		} `json:"content"`
+		FinishReason string `json:"finishReason"`
+	} `json:"candidates"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// GenerateWrapped asks Gemini for AI-written Wrapped slides based on a
+// summary of the user's shell statistics
+func GenerateWrapped(summary string) (WrappedResponse, error) {
+	if !Available() {
+		return WrappedResponse{}, ErrNoAPIKey
+	}
+
+	payload := map[string]interface{}{
+		"systemInstruction": map[string]interface{}{
+			"parts": []map[string]interface{}{{"text": systemPrompt}},
+		},
+		"contents": []map[string]interface{}{
+			{
+				"role":  "user",
+				"parts": []map[string]interface{}{{"text": "Here are my shell stats:\n\n" + summary}},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"responseMimeType": "application/json",
+			"responseSchema":   responseSchema,
 		},
 	}
 
@@ -77,139 +139,74 @@ Shell data: %s`, data),
 		return WrappedResponse{}, fmt.Errorf("failed to marshal payload: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", geminiAPIURL+"?key="+apiKey, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequest("POST", geminiAPIBase+Model()+":generateContent", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return WrappedResponse{}, fmt.Errorf("failed to create request: %v", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", key())
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return WrappedResponse{}, fmt.Errorf("failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	rawResponse, err := ioutil.ReadAll(resp.Body)
+	rawResponse, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return WrappedResponse{}, fmt.Errorf("failed to read response body: %v", err)
 	}
+	logResponse(rawResponse)
 
-	// Log the raw response
-	if err := logResponse(rawResponse); err != nil {
-		return WrappedResponse{}, fmt.Errorf("failed to log response: %v", err)
-	}
-
-	var result map[string]interface{}
+	var result generateResponse
 	if err := json.Unmarshal(rawResponse, &result); err != nil {
-		return WrappedResponse{}, fmt.Errorf("failed to decode response: %v", err)
+		return WrappedResponse{}, fmt.Errorf("failed to decode response (HTTP %d): %v", resp.StatusCode, err)
+	}
+	if result.Error != nil {
+		return WrappedResponse{}, fmt.Errorf("gemini API error (HTTP %d): %s", resp.StatusCode, result.Error.Message)
+	}
+	if len(result.Candidates) == 0 {
+		return WrappedResponse{}, fmt.Errorf("gemini returned no candidates (HTTP %d)", resp.StatusCode)
 	}
 
-	if candidates, ok := result["candidates"].([]interface{}); ok && len(candidates) > 0 {
-		if firstCandidate, ok := candidates[0].(map[string]interface{}); ok {
-			if content, ok := firstCandidate["content"].(map[string]interface{}); ok {
-				if parts, ok := content["parts"].([]interface{}); ok && len(parts) > 0 {
-					if firstPart, ok := parts[0].(map[string]interface{}); ok {
-						if text, ok := firstPart["text"].(string); ok {
-							// Log the extracted text
-							if err := logResponse([]byte("Extracted text: " + text)); err != nil {
-								return WrappedResponse{}, fmt.Errorf("failed to log extracted text: %v", err)
-							}
-
-							// Remove the ```json``` markers
-							jsonText := strings.TrimPrefix(text, "```json\n")
-							jsonText = strings.TrimSuffix(jsonText, "\n```")
-
-							// Remove any remaining backticks
-							jsonText = strings.ReplaceAll(jsonText, "`", "")
-
-							// Remove the note at the end of the JSON text
-							noteIndex := strings.Index(jsonText, "**Note:**")
-							if noteIndex != -1 {
-								jsonText = jsonText[:noteIndex]
-							}
-
-							// Log the final JSON text before parsing
-							if err := logResponse([]byte("Final jsonText: " + jsonText)); err != nil {
-								return WrappedResponse{}, fmt.Errorf("failed to log final jsonText: %v", err)
-							}
-
-							var wrappedResp WrappedResponse
-
-							// Log the JSON text before parsing
-							if err := logResponse([]byte("JSON text to be parsed: " + jsonText)); err != nil {
-								return WrappedResponse{}, fmt.Errorf("failed to log JSON text: %v", err)
-							}
-
-							// Parse the JSON text
-							if err := json.Unmarshal([]byte(jsonText), &wrappedResp); err != nil {
-								// Log the error
-								if logErr := logResponse([]byte(fmt.Sprintf("Failed to parse text as JSON: %v\nJSON text: %s", err, jsonText))); logErr != nil {
-									return WrappedResponse{}, fmt.Errorf("failed to log JSON parsing error: %v", logErr)
-								}
-								return WrappedResponse{}, fmt.Errorf("failed to parse text as JSON: %v", err)
-							}
-
-							// Log the successfully parsed response
-							if err := logResponse([]byte(fmt.Sprintf("Successfully parsed WrappedResponse: %v", wrappedResp))); err != nil {
-								return WrappedResponse{}, fmt.Errorf("failed to log parsed response: %v", err)
-							}
-
-							return wrappedResp, nil
-						}
-					}
-				}
-			}
+	var text strings.Builder
+	for _, part := range result.Candidates[0].Content.Parts {
+		if !part.Thought {
+			text.WriteString(part.Text)
 		}
 	}
 
-	// Log the invalid response format
-	if err := logResponse([]byte("Invalid response format")); err != nil {
-		return WrappedResponse{}, fmt.Errorf("failed to log invalid response format: %v", err)
+	var wrappedResp WrappedResponse
+	if err := json.Unmarshal([]byte(stripCodeFence(text.String())), &wrappedResp); err != nil {
+		return WrappedResponse{}, fmt.Errorf("failed to parse text as JSON (finish reason %s): %v",
+			result.Candidates[0].FinishReason, err)
+	}
+	if len(wrappedResp.Sections) == 0 {
+		return WrappedResponse{}, errors.New("gemini returned no slides")
 	}
 
-	return WrappedResponse{}, fmt.Errorf("invalid response format")
+	return wrappedResp, nil
 }
 
-func logResponse(response []byte) error {
-	// Define log file path
-	logPath := "gemini_response.log"
+// stripCodeFence removes a ```json fence in case the model adds one anyway
+func stripCodeFence(text string) string {
+	text = strings.TrimSpace(text)
+	if strings.HasPrefix(text, "```") {
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```")
+		text = strings.TrimSuffix(text, "```")
+	}
+	return strings.TrimSpace(text)
+}
 
-	// Open the file in append mode or create it if it doesn't exist
-	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// logResponse appends the raw API response to gemini_response.log. Logging
+// is best effort and never fails the request.
+func logResponse(response []byte) {
+	file, err := os.OpenFile("gemini_response.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		// Log the error to a separate error log file
-		errorLogPath := "gemini_error.log"
-		errorLogFile, err := os.OpenFile(errorLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to open error log file: %v", err)
-		}
-		defer errorLogFile.Close()
-		_, errWrite := errorLogFile.WriteString(fmt.Sprintf("Error writing to log file: %v\n", err))
-		if errWrite != nil {
-			return fmt.Errorf("failed to write error to log file: %v", errWrite)
-		}
-		return fmt.Errorf("failed to open log file: %v", err)
+		return
 	}
 	defer file.Close()
-
-	// Write the response to the log file
-	_, err = file.Write(response)
-	if err != nil {
-		// Log the error to a separate error log file
-		errorLogPath := "gemini_error.log"
-		errorLogFile, err := os.OpenFile(errorLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to open error log file: %v", err)
-		}
-		defer errorLogFile.Close()
-		_, errWrite := errorLogFile.WriteString(fmt.Sprintf("Error writing to log file: %v\n", err))
-		if errWrite != nil {
-			return fmt.Errorf("failed to write error to log file: %v", errWrite)
-		}
-		return fmt.Errorf("failed to write to log file: %v", err)
-	}
-
-	return nil
+	fmt.Fprintf(file, "%s\n%s\n", time.Now().Format(time.RFC3339), response)
 }

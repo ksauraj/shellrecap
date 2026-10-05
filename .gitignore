@@ -27,3 +27,6 @@ go.work
 
 # Logs
 shell_analyzer.log
+
+# Built binary
+/k8au-shell-analyser

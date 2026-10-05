@@ -1,6 +1,6 @@
 # K8au Shell Analyzer
 
-🚀 An interactive TUI tool to analyze your shell history and provide insights about your command-line usage patterns.
+An interactive TUI tool to analyze your shell history and provide insights about your command-line usage patterns.
 
 ## Table of Contents
 - [Features](#features)
@@ -17,12 +17,12 @@
 - [License](#license)
 
 ## Features
-- 📊 Shell history analysis
-- 🛠️ Tech stack detection
-- 📈 Productivity metrics
-- 🔄 Work pattern analysis
-- 🎯 Tool usage statistics
-- 🎬 Year-in-review style wrap-up
+- Shell history analysis
+- Tech stack detection
+- Productivity metrics
+- Work pattern analysis
+- Tool usage statistics
+- Spotify-Wrapped style recap of your year in the terminal, with ASCII animations and optional AI-written slides
 
 ## Installation
 
@@ -83,6 +83,22 @@ make build GEMINI_API_KEY=your_api_key_here
 go build -ldflags "-X github.com/ksauraj/k8au-shell-analyzer/internal/gemini.apiKey=YOUR_API_KEY" ./cmd/k8au-shell-analyzer
 ```
 
+### Gemini (optional)
+
+The Wrapped view is computed locally from your history. With a Gemini API key it also gets a few
+AI-written slides (persona, roast, superpower and forecast). Only aggregate stats such as program
+names and counts are sent, never full command lines.
+
+| Variable         | Description                                                          |
+|------------------|----------------------------------------------------------------------|
+| `GEMINI_API_KEY` | API key, used when none was compiled in with `-ldflags`              |
+| `GEMINI_MODEL`   | Model to use, defaults to `gemini-3.8-flash`                         |
+| `K8AU_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/k8au-shell-analyzer` on Linux |
+
+AI slides are cached per year, so Gemini isn't called on every launch. Cached slides are reused
+as long as your stats are unchanged, or for up to a week while your command count stays within
+10% of when they were generated. Press `r` to re-read your history and regenerate them.
+
 ## Usage
 
 ### Basic Usage
@@ -91,18 +107,24 @@ go build -ldflags "-X github.com/ksauraj/k8au-shell-analyzer/internal/gemini.api
 ```
 
 ### Navigation Keys
-| Key           | Action                |
-|---------------|----------------------|
-| `Tab`         | Switch between views |
-| `←/→`         | Navigate slides      |
-| `q`           | Quit application     |
+| Key                       | Action                                           |
+|---------------------------|--------------------------------------------------|
+| `Tab` / `Shift+Tab`       | Next / previous view                             |
+| `1`-`6`                   | Jump to a view                                   |
+| `←/→`                     | Change slides in Wrapped, switch views elsewhere |
+| `↑/↓`, `PgUp/PgDn`, mouse | Scroll the current view                          |
+| `g` / `G`                 | Jump to top / bottom                             |
+| `Space`                   | Pause / resume slide autoplay in Wrapped         |
+| `r`                       | Re-read history and regenerate AI slides         |
+| `q`                       | Quit application                                 |
 
 ### Available Views
 1. **Overview**: General statistics
 2. **Tech Profile**: Technical expertise analysis
 3. **Work Patterns**: Productivity patterns
 4. **Tool Usage**: Developer tools usage
-5. **Wrapped**: Year-in-review summary
+5. **Wrapped**: Your year in the terminal: top commands, peak hours, git story, stack, new tools, typos and persona
+6. **Timeline**: Your most recent interesting commands
 
 ## Development
 
