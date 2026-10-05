@@ -27,8 +27,8 @@ const (
 	// revealFrames is how many animation ticks bars take to grow and
 	// numbers take to count up when a view or slide appears
 	revealFrames = 8
-	// minSplash keeps the loading animation from just flashing by
-	minSplash = 900 * time.Millisecond
+	// minSplash keeps the loading animation on screen long enough to enjoy
+	minSplash = 4 * time.Second
 
 	appVersion = "v1.1.0"
 )

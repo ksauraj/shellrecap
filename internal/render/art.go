@@ -40,6 +40,10 @@ var bannerLetters = func() [][]string {
 // bannerWave is the gradient that sweeps across the banner
 var bannerWave = []lipgloss.Color{"24", "31", "38", "45", "51", "87", "123", "87", "51", "45", "38", "31"}
 
+// messageTicks is how long each loading message stays up, so all of them
+// show once during the 4 second splash
+const messageTicks = 8
+
 var loadingMessages = []string{
 	"reading your shell history",
 	"counting commands",
@@ -81,8 +85,8 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 	}
 	bar := "[" + strings.Repeat(" ", pos) + strings.Repeat("=", block) + strings.Repeat(" ", track-block-pos) + "]"
 
-	message := loadingMessages[(frame/6)%len(loadingMessages)]
-	if refreshing && frame < 6 {
+	message := loadingMessages[(frame/messageTicks)%len(loadingMessages)]
+	if refreshing && frame < messageTicks {
 		message = "refreshing everything, skipping the cache"
 	}
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).
