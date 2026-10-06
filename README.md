@@ -3,6 +3,8 @@
 Your year in the terminal. shellrecap is an interactive TUI that reads your shell history and turns
 it into insights about how you work, plus a Spotify-Wrapped style recap of your year.
 
+![shellrecap preview: the splash screen, the dashboard tabs and the Recap slides](assets/preview.gif)
+
 ## Table of Contents
 - [Features](#features)
 - [Installation](#installation)
