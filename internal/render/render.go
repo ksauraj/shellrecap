@@ -16,65 +16,23 @@ import (
 	"github.com/muesli/reflow/truncate"
 )
 
-// maxPanelWidth keeps the panels readable on very wide terminals
-const maxPanelWidth = 100
-
-// valueStyle highlights the key numbers and facts in a panel
-var valueStyle = lipgloss.NewStyle().Bold(true).Foreground(theme.Peach)
-
-// RenderTabs renders the tab bar
+// RenderTabs renders the tab bar, with the active tab on a gradient
 func RenderTabs(tabs []string, active int, width int) string {
 	var tabsDisplay strings.Builder
 
 	for i, tab := range tabs {
-		style := lipgloss.NewStyle().
-			Padding(0, 1)
-
 		if i == active {
-			style = style.
-				Bold(true).
-				Background(theme.Mauve).
-				Foreground(theme.Base)
-			tabsDisplay.WriteString(style.Render(fmt.Sprintf("%d %s", i+1, tab)))
+			label := []rune(fmt.Sprintf(" %d %s ", i+1, tab))
+			for j, r := range label {
+				tabsDisplay.WriteString(lipgloss.NewStyle().Bold(true).Foreground(theme.Base).
+					Background(theme.Grape.Gradient.Color(float64(j) / float64(len(label)-1))).Render(string(r)))
+			}
 			continue
 		}
-
-		tabsDisplay.WriteString(style.Render(theme.Faint.Render(strconv.Itoa(i+1)) + " " + theme.Dim.Render(tab)))
+		tabsDisplay.WriteString(" " + theme.Faint.Render(strconv.Itoa(i+1)) + " " + theme.Dim.Render(tab) + " ")
 	}
 
 	return fit(tabsDisplay.String(), width)
-}
-
-func panelWidth(width int) int {
-	if width > maxPanelWidth {
-		return maxPanelWidth
-	}
-	if width < 30 {
-		return 30
-	}
-	return width
-}
-
-// innerWidth is the usable text width inside a panel
-func innerWidth(width int) int {
-	return panelWidth(width) - 2 - 4 // border and padding
-}
-
-// panel draws content in a rounded box that fits the terminal width. Lines
-// that are too long are truncated rather than wrapped so that every list
-// item stays on one row.
-func panel(content string, width int) string {
-	inner := innerWidth(width)
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	for i, line := range lines {
-		lines[i] = fit(line, inner)
-	}
-	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Overlay).
-		Padding(1, 2).
-		Width(panelWidth(width) - 2).
-		Render(strings.Join(lines, "\n"))
 }
 
 // fit truncates s to width terminal cells, keeping ANSI colors intact
@@ -90,25 +48,14 @@ func oneLine(s string) string {
 	return strings.ReplaceAll(s, "\n", " ; ")
 }
 
-// title renders a panel title, underlined ASCII style
-func title(text string, accent lipgloss.TerminalColor) string {
-	return lipgloss.NewStyle().Bold(true).Foreground(accent).Render(text) + "\n" +
-		theme.Track.Render(strings.Repeat("=", len(text))) + "\n\n"
+// stat renders a "label   value" line with the labels padded to line up
+func stat(label, value string) string {
+	return theme.Dim.Render(fmt.Sprintf("%-16s", label)) + value
 }
 
-// heading renders a section heading inside a panel
-func heading(text string) string {
-	return theme.Bold.Render(text) + "\n"
-}
-
-// field renders a "label: value" line with the labels padded to line up
-func field(label, value string) string {
-	return theme.Dim.Render(fmt.Sprintf("%-17s", label+":")) + " " + value + "\n"
-}
-
-// empty renders a placeholder for a section without data
-func empty(text string) string {
-	return "  " + theme.Faint.Render(text) + "\n"
+// faint renders a placeholder for a card without data
+func faint(text string) []string {
+	return []string{theme.Faint.Render(text)}
 }
 
 // scale returns v scaled by an animation's progress, from 0 to 1
@@ -129,144 +76,16 @@ func formatInt(n int) string {
 	return s
 }
 
-// bar draws a horizontal bar whose filled part follows the sunset gradient
-func bar(value, max, width int) string {
-	if max <= 0 || width <= 0 {
-		return ""
-	}
-	filled := int(math.Round(float64(value) / float64(max) * float64(width)))
-	if value > 0 && filled == 0 {
-		filled = 1
-	}
-	if filled > width {
-		filled = width
-	}
-
-	var b strings.Builder
-	for i := 0; i < filled; i++ {
-		b.WriteString(theme.Fg(theme.Gradient(float64(i) / float64(maxInt(width-1, 1)))).Render("█"))
-	}
-	b.WriteString(theme.Track.Render(strings.Repeat("░", width-filled)))
-	return b.String()
+func highlight(accent theme.Accent, text string) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(accent.Color).Render(text)
 }
 
-// countRows renders aligned "name ███░░ count" rows, scaled to the largest
-// count. limit <= 0 shows every row. Bars and counts grow with progress.
-func countRows(counts []analyzer.UsageCount, limit int, unit string, width int, progress float64) string {
-	if len(counts) == 0 {
-		return ""
-	}
-	if limit > 0 && len(counts) > limit {
-		counts = counts[:limit]
-	}
-
-	nameWidth, countWidth, max := 0, 0, 0
-	for _, c := range counts {
-		nameWidth = maxInt(nameWidth, lipgloss.Width(c.Name))
-		countWidth = maxInt(countWidth, len(formatInt(c.Count)))
-		max = maxInt(max, c.Count)
-	}
-	if nameWidth > 24 {
-		nameWidth = 24
-	}
-	barWidth := width - 2 - nameWidth - 1 - 1 - countWidth - len(unit)
-	if barWidth > 30 {
-		barWidth = 30
-	}
-
-	var b strings.Builder
-	for _, c := range counts {
-		name := fit(c.Name, nameWidth)
-		fmt.Fprintf(&b, "  %s%s %s %s%s\n",
-			theme.Normal.Render(name), strings.Repeat(" ", nameWidth-lipgloss.Width(name)),
-			bar(scale(c.Count, progress), max, barWidth),
-			theme.Normal.Render(fmt.Sprintf("%*s", countWidth, formatInt(scale(c.Count, progress)))),
-			theme.Faint.Render(unit))
-	}
-	return b.String()
-}
-
-var chartBlocks = []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
-
-// columnChart draws counts as vertical bars, height rows tall, colored
-// along the sunset gradient from left to right. The bars grow with progress.
-func columnChart(counts []int, colWidth, gap, height int, progress float64) []string {
-	max := 0
-	for _, c := range counts {
-		max = maxInt(max, c)
-	}
-
-	rows := make([]string, height)
-	for r := 0; r < height; r++ {
-		var b strings.Builder
-		rowFromBottom := height - 1 - r
-		for i, c := range counts {
-			// Eighths of a row filled, counting from the bottom
-			level := 0
-			if max > 0 {
-				level = int(math.Round(float64(c) / float64(max) * float64(height*8) * progress))
-			}
-			if c > 0 && level == 0 && progress > 0 {
-				level = 1
-			}
-			fill := level - rowFromBottom*8
-			if fill < 0 {
-				fill = 0
-			}
-			if fill > 8 {
-				fill = 8
-			}
-			column := theme.Fg(theme.Gradient(float64(i) / float64(maxInt(len(counts)-1, 1))))
-			b.WriteString(column.Render(strings.Repeat(chartBlocks[fill], colWidth)))
-			if i < len(counts)-1 {
-				b.WriteString(strings.Repeat(" ", gap))
-			}
-		}
-		rows[r] = b.String()
-	}
-	return rows
-}
-
-// hourChart draws activity per hour of day with an hour axis underneath
-func hourChart(counts [24]int, progress float64) []string {
-	rows := columnChart(counts[:], 2, 0, 3, progress)
-
-	axis := []byte(strings.Repeat(" ", 48))
-	for _, h := range []int{0, 6, 12, 18} {
-		copy(axis[h*2:], fmt.Sprintf("%02d", h))
-	}
-	copy(axis[46:], "23")
-	return append(rows, theme.Faint.Render(string(axis)))
-}
-
-// monthChart draws activity per month with month names underneath
-func monthChart(counts [12]int, progress float64) []string {
-	rows := columnChart(counts[:], 3, 1, 3, progress)
-
-	var labels []string
-	for m := time.January; m <= time.December; m++ {
-		labels = append(labels, m.String()[:3])
-	}
-	return append(rows, theme.Faint.Render(strings.Join(labels, " ")))
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func RenderOverview(data analyzer.ShellData, width int, progress float64) string {
-	inner := innerWidth(width)
-
-	var content strings.Builder
-	content.WriteString(title("Shell Usage Overview", theme.Peach))
-
+func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 	shells := analyzer.SortedShells(data)
 	if len(shells) == 0 {
-		content.WriteString(theme.Faint.Render("No shell history found (looked for bash, zsh and fish history files)") + "\n")
-		return panel(content.String(), width)
+		return grid([]cardSpec{{title: "Overview", accent: theme.Grape, wide: true, body: func(int) []string {
+			return faint("No shell history found (looked for bash, zsh and fish history files)")
+		}}}, width)
 	}
 
 	all := analyzer.AllEntries(data)
@@ -285,229 +104,215 @@ func RenderOverview(data analyzer.ShellData, width int, progress float64) string
 		}
 	}
 
-	content.WriteString(field("Total commands", valueStyle.Render(formatInt(scale(len(all), progress)))))
-	content.WriteString(field("Unique commands", valueStyle.Render(formatInt(scale(len(unique), progress)))))
-	if !first.IsZero() {
-		content.WriteString(field("History span", theme.Normal.Render(first.Format("Jan 2, 2006"))+
-			theme.Faint.Render(" → ")+theme.Normal.Render(last.Format("Jan 2, 2006"))))
-	}
-	content.WriteString("\n")
-
-	content.WriteString(heading("Shells"))
 	var shellCounts []analyzer.UsageCount
 	for _, shell := range shells {
 		shellCounts = append(shellCounts, analyzer.UsageCount{Name: shell, Count: len(data.Histories[shell])})
 	}
-	content.WriteString(countRows(shellCounts, 0, " commands", inner, progress))
-	content.WriteString("\n")
+	top := analyzer.TopN(analyzer.SortedCounts(data.CommonCmds), 10)
+	layout := newBarLayout(cardInner(halfCardWidth(width)), shellCounts, top)
 
-	content.WriteString(heading("Top Commands"))
-	content.WriteString(countRows(analyzer.SortedCounts(data.CommonCmds), 10, "", inner, progress))
+	return grid([]cardSpec{
+		{title: "Summary", accent: theme.Grape, body: func(int) []string {
+			lines := []string{
+				stat("Total commands", highlight(theme.Grape, formatInt(scale(len(all), anim.Progress)))),
+				stat("Unique commands", highlight(theme.Grape, formatInt(scale(len(unique), anim.Progress)))),
+				stat("Shells", theme.Normal.Render(strings.Join(shells, ", "))),
+			}
+			if !first.IsZero() {
+				lines = append(lines,
+					stat("First command", theme.Normal.Render(first.Format("Jan 2, 2006"))),
+					stat("Latest command", theme.Normal.Render(last.Format("Jan 2, 2006"))))
+			}
+			return lines
+		}},
+		{title: "Shells", accent: theme.Sunset, body: func(int) []string {
+			return countRows(shellCounts, layout, theme.Sunset.Gradient, anim)
+		}},
+		{title: "Top Commands", accent: theme.Gold, body: func(int) []string {
+			if len(top) == 0 {
+				return faint("No commands found")
+			}
+			return countRows(top, layout, theme.Gold.Gradient, anim)
+		}},
+		{title: "Shell Configuration", accent: theme.Mint, body: func(int) []string {
+			return configLines(data, shells)
+		}},
+	}, width)
+}
 
-	// Add shell configuration information
+func configLines(data analyzer.ShellData, shells []string) []string {
+	var lines []string
 	for _, shell := range shells {
 		config, exists := data.ShellConfigs[shell]
 		if !exists {
 			continue
 		}
-		content.WriteString("\n" + heading(fmt.Sprintf("%s configuration", shell)))
-		content.WriteString("  " + theme.Dim.Render(fmt.Sprintf("%d aliases • %d plugins • %d environment variables",
-			len(config.Aliases), len(config.Plugins), len(config.Environment))) + "\n")
+		if len(lines) > 0 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, highlight(theme.Mint, shell)+"  "+theme.Dim.Render(fmt.Sprintf("%d aliases · %d plugins · %d env vars",
+			len(config.Aliases), len(config.Plugins), len(config.Environment))))
 
-		// List up to 5 plugins
 		if len(config.Plugins) > 0 {
 			var names []string
 			for i, plugin := range config.Plugins {
-				if i >= 5 {
+				if i >= 3 {
 					break
 				}
-				names = append(names, theme.Fg(theme.Flamingo).Render(plugin.Name))
+				names = append(names, plugin.Name)
 			}
-			line := "  " + theme.Dim.Render("Plugins: ") + strings.Join(names, theme.Faint.Render(", "))
-			if len(config.Plugins) > 5 {
-				line += theme.Faint.Render(fmt.Sprintf(" and %d more", len(config.Plugins)-5))
+			line := theme.Faint.Render("plugins ") + theme.Normal.Render(strings.Join(names, ", "))
+			if len(config.Plugins) > 3 {
+				line += theme.Faint.Render(fmt.Sprintf(" +%d", len(config.Plugins)-3))
 			}
-			content.WriteString(line + "\n")
+			lines = append(lines, line)
 		}
 
-		// List up to 5 aliases, sorted so they don't reshuffle on redraw
-		if len(config.Aliases) > 0 {
-			names := make([]string, 0, len(config.Aliases))
-			for alias := range config.Aliases {
-				names = append(names, alias)
+		// Sorted so the aliases don't reshuffle on redraw
+		names := make([]string, 0, len(config.Aliases))
+		for alias := range config.Aliases {
+			names = append(names, alias)
+		}
+		sort.Strings(names)
+		for i, alias := range names {
+			if i >= 3 {
+				lines = append(lines, theme.Faint.Render(fmt.Sprintf("and %d more aliases", len(names)-3)))
+				break
 			}
-			sort.Strings(names)
-			for i, alias := range names {
-				if i >= 5 {
-					content.WriteString(theme.Faint.Render(fmt.Sprintf("  And %d more aliases...", len(names)-5)) + "\n")
-					break
-				}
-				content.WriteString(fmt.Sprintf("  %s %s %s\n", theme.Fg(theme.Peach).Render(alias),
-					theme.Faint.Render("→"), theme.Dim.Render(oneLine(config.Aliases[alias]))))
-			}
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Lime).Render(alias)+
+				theme.Faint.Render(" → ")+theme.Dim.Render(oneLine(config.Aliases[alias])))
 		}
 	}
-
-	return panel(content.String(), width)
+	if len(lines) == 0 {
+		return faint("No shell configuration found")
+	}
+	return lines
 }
 
 // RenderTechProfile renders the tech profile tab
-func RenderTechProfile(profile analyzer.TechProfile, width int, progress float64) string {
-	inner := innerWidth(width)
+func RenderTechProfile(profile analyzer.TechProfile, width int, anim Anim) string {
+	layout := newBarLayout(cardInner(halfCardWidth(width)), profile.SecondarySkills, profile.TopTech)
 
-	var content strings.Builder
-	content.WriteString(title("Technical Profile", theme.Mauve))
-
-	// Primary Role
-	if profile.PrimaryRole != "" {
-		content.WriteString(field("Primary Role", lipgloss.NewStyle().Bold(true).Foreground(theme.Mauve).Render(profile.PrimaryRole)))
-	} else {
-		content.WriteString(field("Primary Role", theme.Faint.Render("Not enough data")))
-	}
-
-	// Tech Stack
-	if len(profile.TechStack) > 0 {
-		content.WriteString(field("Languages", theme.Normal.Render(strings.Join(profile.TechStack, " · "))))
-	} else {
-		content.WriteString(field("Languages", theme.Faint.Render("No language usage found")))
-	}
-	content.WriteString("\n")
-
-	// Skill areas
-	content.WriteString(heading("Skill Areas"))
-	if len(profile.SecondarySkills) > 0 {
-		content.WriteString(countRows(profile.SecondarySkills, 0, " cmds", inner, progress))
-	} else {
-		content.WriteString(empty("No skill data available"))
-	}
-	content.WriteString("\n")
-
-	// Most used tools
-	content.WriteString(heading("Most Used Tech"))
-	if len(profile.TopTech) > 0 {
-		content.WriteString(countRows(profile.TopTech, 0, " uses", inner, progress))
-	} else {
-		content.WriteString(empty("No tool usage data available"))
-	}
-
-	return panel(content.String(), width)
+	return grid([]cardSpec{
+		{title: "Profile", accent: theme.Grape, wide: true, body: func(int) []string {
+			role := theme.Faint.Render("Not enough data")
+			if profile.PrimaryRole != "" {
+				role = highlight(theme.Grape, profile.PrimaryRole)
+			}
+			languages := theme.Faint.Render("No language usage found")
+			if len(profile.TechStack) > 0 {
+				languages = theme.Normal.Render(strings.Join(profile.TechStack, " · "))
+			}
+			return []string{stat("Primary role", role), stat("Languages", languages)}
+		}},
+		{title: "Skill Areas", accent: theme.Sunset, body: func(int) []string {
+			if len(profile.SecondarySkills) == 0 {
+				return faint("No skill data available")
+			}
+			return countRows(profile.SecondarySkills, layout, theme.Sunset.Gradient, anim)
+		}},
+		{title: "Most Used Tech", accent: theme.Gold, body: func(int) []string {
+			if len(profile.TopTech) == 0 {
+				return faint("No tool usage data available")
+			}
+			return countRows(profile.TopTech, layout, theme.Gold.Gradient, anim)
+		}},
+	}, width)
 }
 
 // RenderWorkPatterns renders the work patterns tab
-func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, progress float64) string {
-	inner := innerWidth(width)
-
-	var content strings.Builder
-	content.WriteString(title("Work Patterns", theme.Yellow))
-
-	// Daily Activity
-	content.WriteString(heading("Daily Activity"))
-	if len(patterns.PeakHours) > 0 {
-		var peaks []string
-		for _, hour := range patterns.PeakHours {
-			peaks = append(peaks, valueStyle.Render(fmt.Sprintf("%02d:00", hour)))
-		}
-		content.WriteString("  " + theme.Dim.Render("Peak hours: ") + strings.Join(peaks, theme.Faint.Render(", ")) + "\n\n")
-		for _, row := range hourChart(patterns.HourlyActivity, progress) {
-			content.WriteString("  " + row + "\n")
-		}
-	} else {
-		content.WriteString(empty("Your history has no timestamps, so activity by hour isn't available"))
-	}
-	content.WriteString("\n")
-
-	// Productivity Metrics
-	content.WriteString(heading("Productivity Metrics"))
-	metrics := make([]string, 0, len(patterns.Productivity))
-	for metric := range patterns.Productivity {
-		metrics = append(metrics, metric)
-	}
-	sort.Strings(metrics)
-	barWidth := minInt(20, inner-2-20-1-7)
-	for _, metric := range metrics {
-		value := patterns.Productivity[metric] * progress
-		content.WriteString(fmt.Sprintf("  %s %s %s\n",
-			theme.Normal.Render(fmt.Sprintf("%-20s", metric)),
-			bar(int(value*1000), 1000, barWidth),
-			theme.Normal.Render(fmt.Sprintf("%5.1f%%", value*100))))
-	}
-	content.WriteString("\n")
-
-	// Common Workflows
-	content.WriteString(heading("Common Workflows"))
-	if len(patterns.CommonWorkflows) > 0 {
-		for _, workflow := range patterns.CommonWorkflows {
-			content.WriteString("  " + theme.Fg(theme.Yellow).Render("•") + " " + theme.Normal.Render(workflow) + "\n")
-		}
-	} else {
-		content.WriteString(empty("No recurring workflows found"))
-	}
-
-	return panel(content.String(), width)
+func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, anim Anim) string {
+	return grid([]cardSpec{
+		{title: "Daily Activity", accent: theme.Grape, wide: true, body: func(int) []string {
+			if len(patterns.PeakHours) == 0 {
+				return faint("Your history has no timestamps, so activity by hour isn't available")
+			}
+			var peaks []string
+			for _, hour := range patterns.PeakHours {
+				peaks = append(peaks, highlight(theme.Grape, fmt.Sprintf("%02d:00", hour)))
+			}
+			lines := []string{stat("Peak hours", strings.Join(peaks, theme.Faint.Render(", "))), ""}
+			return append(lines, hourChart(patterns.HourlyActivity, anim)...)
+		}},
+		{title: "Productivity", accent: theme.Sunset, body: func(inner int) []string {
+			metrics := make([]string, 0, len(patterns.Productivity))
+			for metric := range patterns.Productivity {
+				metrics = append(metrics, metric)
+			}
+			sort.Strings(metrics)
+			barWidth := maxInt(minInt(inner-20-7, 40), 4)
+			var lines []string
+			for _, metric := range metrics {
+				value := patterns.Productivity[metric] * anim.Progress
+				lines = append(lines, theme.Normal.Render(fmt.Sprintf("%-19s", metric))+" "+
+					bar(int(value*1000), 1000, barWidth, theme.Sunset.Gradient, anim.Frame)+" "+
+					theme.Dim.Render(fmt.Sprintf("%5.1f%%", value*100)))
+			}
+			return lines
+		}},
+		{title: "Common Workflows", accent: theme.Gold, body: func(int) []string {
+			if len(patterns.CommonWorkflows) == 0 {
+				return faint("No recurring workflows found")
+			}
+			var lines []string
+			for _, workflow := range patterns.CommonWorkflows {
+				lines = append(lines, lipgloss.NewStyle().Foreground(theme.Amber).Render("•")+" "+theme.Normal.Render(workflow))
+			}
+			return lines
+		}},
+	}, width)
 }
 
-func RenderToolUsage(usage analyzer.ToolUsage, width int, progress float64) string {
-	inner := innerWidth(width)
-
-	var content strings.Builder
-	content.WriteString(title("Tool Usage Statistics", theme.Red))
-
+func RenderToolUsage(usage analyzer.ToolUsage, width int, anim Anim) string {
 	sections := []struct {
-		title string
-		usage map[string]int
-		empty string
+		title  string
+		accent theme.Accent
+		counts []analyzer.UsageCount
+		empty  string
 	}{
-		{"Editors", usage.Editors, "No editor usage data available"},
-		{"Programming Languages", usage.Languages, "No language usage data available"},
-		{"Build Tools", usage.BuildTools, "No build tool usage data available"},
-		{"DevOps & Cloud", usage.DevOps, "No DevOps tool usage data available"},
-	}
-	for i, section := range sections {
-		if i > 0 {
-			content.WriteString("\n")
-		}
-		content.WriteString(heading(section.title))
-		if len(section.usage) > 0 {
-			content.WriteString(countRows(analyzer.SortedCounts(section.usage), 8, " uses", inner, progress))
-		} else {
-			content.WriteString(empty(section.empty))
-		}
+		{"Editors", theme.Grape, analyzer.TopN(analyzer.SortedCounts(usage.Editors), 8), "No editor usage found"},
+		{"Programming Languages", theme.Sunset, analyzer.TopN(analyzer.SortedCounts(usage.Languages), 8), "No language usage found"},
+		{"Build Tools", theme.Gold, analyzer.TopN(analyzer.SortedCounts(usage.BuildTools), 8), "No build tool usage found"},
+		{"DevOps & Cloud", theme.Mint, analyzer.TopN(analyzer.SortedCounts(usage.DevOps), 8), "No DevOps tool usage found"},
 	}
 
-	return panel(content.String(), width)
+	// One layout for all four cards, so their bars share a grid
+	var lists [][]analyzer.UsageCount
+	for _, s := range sections {
+		lists = append(lists, s.counts)
+	}
+	layout := newBarLayout(cardInner(halfCardWidth(width)), lists...)
+
+	var specs []cardSpec
+	for _, s := range sections {
+		s := s
+		specs = append(specs, cardSpec{title: s.title, accent: s.accent, body: func(int) []string {
+			if len(s.counts) == 0 {
+				return faint(s.empty)
+			}
+			return countRows(s.counts, layout, s.accent.Gradient, anim)
+		}})
+	}
+	return grid(specs, width)
 }
 
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// RenderTimeline renders the timeline, revealing entries one by one as
-// progress goes from 0 to 1
-func RenderTimeline(entries []types.TimelineEntry, width int, progress float64) string {
-	var content strings.Builder
-	content.WriteString(title("Interesting Commands Timeline", theme.Green))
-
-	if len(entries) == 0 {
-		content.WriteString(theme.Faint.Render("No interesting commands found") + "\n")
-	}
-	shown := int(math.Ceil(float64(len(entries)) * progress))
-	for i, entry := range entries {
-		if i >= shown {
-			content.WriteString("\n")
-			continue
+// RenderTimeline renders the timeline, revealing entries one by one
+func RenderTimeline(entries []types.TimelineEntry, width int, anim Anim) string {
+	return grid([]cardSpec{{title: "Recent Interesting Commands", accent: theme.Mint, wide: true, body: func(int) []string {
+		if len(entries) == 0 {
+			return faint("No interesting commands found")
 		}
-		when := "unknown date       "
-		if !entry.Timestamp.IsZero() {
-			when = entry.Timestamp.Format("2006-01-02 15:04:05")
+		shown := int(math.Ceil(float64(len(entries)) * anim.Progress))
+		lines := make([]string, len(entries))
+		for i, entry := range entries[:shown] {
+			when := "unknown date    "
+			if !entry.Timestamp.IsZero() {
+				when = entry.Timestamp.Format("2006-01-02 15:04")
+			}
+			lines[i] = theme.Faint.Render(when) + "  " +
+				lipgloss.NewStyle().Foreground(theme.Lime).Render(fmt.Sprintf("%-4s", entry.Shell)) + "  " +
+				theme.Normal.Render(oneLine(entry.Command))
 		}
-		content.WriteString(fmt.Sprintf("%s  %s  %s\n",
-			theme.Faint.Render(when),
-			theme.Fg(theme.Mauve).Render(fmt.Sprintf("%-4s", entry.Shell)),
-			theme.Normal.Render(oneLine(entry.Command))))
-	}
-
-	return panel(content.String(), width)
+		return lines
+	}}}, width)
 }

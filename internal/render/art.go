@@ -75,12 +75,12 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 			if pos >= bannerWaveWidth {
 				pos = 2*bannerWaveWidth - 1 - pos
 			}
-			c := theme.Gradient(float64(pos) / float64(bannerWaveWidth-1))
+			c := theme.Brand.Color(float64(pos) / float64(bannerWaveWidth-1))
 			banner.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render(string(ch)))
 		}
 	}
 
-	subtitle := lipgloss.NewStyle().Italic(true).Foreground(theme.Flamingo).Render("your year in the terminal")
+	subtitle := lipgloss.NewStyle().Italic(true).Foreground(theme.Pink).Render("your year in the terminal")
 
 	// A block bouncing back and forth
 	const track, block = 24, 6
@@ -88,7 +88,9 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 	if pos > track-block {
 		pos = 2*(track-block) - pos
 	}
-	bar := "[" + strings.Repeat(" ", pos) + strings.Repeat("=", block) + strings.Repeat(" ", track-block-pos) + "]"
+	bar := theme.Faint.Render("[") + strings.Repeat(" ", pos) +
+		theme.GradientText(strings.Repeat("=", block), theme.Brand, true) +
+		strings.Repeat(" ", track-block-pos) + theme.Faint.Render("]")
 
 	message := loadingMessages[(frame/messageTicks)%len(loadingMessages)]
 	if refreshing && frame < messageTicks {
@@ -98,7 +100,7 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 		Render(Spinner(frame) + " " + message + strings.Repeat(".", frame/2%4))
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
-		banner.String(), "", subtitle, "", theme.Fg(theme.Peach).Render(bar), "", status)
+		banner.String(), "", subtitle, "", bar, "", status)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, content)
 }
 

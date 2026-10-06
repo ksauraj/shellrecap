@@ -243,22 +243,34 @@ func TestRevealAnimation(t *testing.T) {
 	m := testModel(t, "")
 	m.switchTab(0)
 
-	if view := plain(m.View()); !strings.Contains(view, "Total commands:   0") {
+	if view := plain(m.View()); !regexp.MustCompile(`Total commands\s+0\s`).MatchString(view) {
 		t.Errorf("numbers don't start at zero:\n%s", view)
 	}
 
-	// Run the animation until it stops by itself on a static tab
-	var cmd tea.Cmd
-	for i := 0; i < revealFrames*2; i++ {
-		var updated tea.Model
-		updated, cmd = m.Update(animTickMsg{})
-		m = updated.(Model)
+	tick := func(m Model, n int) (Model, tea.Cmd) {
+		var cmd tea.Cmd
+		for i := 0; i < n; i++ {
+			var updated tea.Model
+			updated, cmd = m.Update(animTickMsg{})
+			m = updated.(Model)
+		}
+		return m, cmd
 	}
-	if cmd != nil || m.animating {
-		t.Error("animation kept ticking after the reveal finished")
+
+	// Tabs with bars keep animating so the glare can sweep across them
+	m, cmd := tick(m, revealFrames*2)
+	if cmd == nil || !m.animating {
+		t.Error("animation stopped on a tab with bars")
 	}
-	if view := plain(m.View()); !strings.Contains(view, "Total commands:   5") {
+	if view := plain(m.View()); !regexp.MustCompile(`Total commands\s+5\s`).MatchString(view) {
 		t.Errorf("numbers didn't count up to their final value:\n%s", view)
+	}
+
+	// The timeline has no bars, so it goes idle once revealed
+	m.switchTab(5)
+	m, cmd = tick(m, revealFrames*2)
+	if cmd != nil || m.animating {
+		t.Error("animation kept ticking on the timeline after the reveal finished")
 	}
 }
 

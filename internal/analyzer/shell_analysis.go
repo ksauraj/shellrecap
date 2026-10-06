@@ -110,13 +110,13 @@ var skillDomains = []struct {
 	programs map[string]bool
 }{
 	{"Version Control", toSet("git", "gh", "glab", "svn", "hg", "lazygit", "tig")},
-	{"Containers & Kubernetes", toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx",
+	{"Containers & K8s", toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx",
 		"kubens", "helm", "minikube", "kind", "k3s", "oc", "eksctl")},
 	{"Cloud CLIs", toSet("aws", "az", "gcloud", "gsutil", "doctl", "flyctl", "fly", "vercel", "netlify",
 		"heroku", "wrangler")},
-	{"Infrastructure as Code", toSet("terraform", "tofu", "terragrunt", "pulumi", "ansible",
+	{"Infra as Code", toSet("terraform", "tofu", "terragrunt", "pulumi", "ansible",
 		"ansible-playbook", "vagrant", "packer")},
-	{"System Administration", toSet("systemctl", "journalctl", "service", "apt", "apt-get", "apt-fast", "dpkg",
+	{"System Admin", toSet("systemctl", "journalctl", "service", "apt", "apt-get", "apt-fast", "dpkg",
 		"dnf", "yum", "pacman", "yay", "paru", "brew", "snap", "flatpak", "zypper", "mount", "umount", "chmod",
 		"chown", "useradd", "usermod", "crontab", "dmesg", "lsblk", "fdisk", "htop", "top", "btop", "ps",
 		"kill", "pkill", "killall", "df", "du", "free")},
@@ -275,9 +275,9 @@ func primaryRole(languages []UsageCount, domainUsage map[string]int) string {
 		count int
 	}
 	candidates := []candidate{
-		{"DevOps & Cloud Engineer", domainUsage["Containers & Kubernetes"] +
-			domainUsage["Cloud CLIs"] + domainUsage["Infrastructure as Code"]},
-		{"System Administrator", domainUsage["System Administration"]},
+		{"DevOps & Cloud Engineer", domainUsage["Containers & K8s"] +
+			domainUsage["Cloud CLIs"] + domainUsage["Infra as Code"]},
+		{"System Administrator", domainUsage["System Admin"]},
 		{"Android Developer", domainUsage["Android & Mobile"]},
 	}
 	if len(languages) > 0 {

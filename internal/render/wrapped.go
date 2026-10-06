@@ -29,16 +29,24 @@ func slideInner(width int) int {
 	return slideWidth(width) - 2 - 6 // border and padding
 }
 
-func splitLines(s string) []string {
-	return strings.Split(strings.TrimRight(s, "\n"), "\n")
-}
-
 // BuildWrappedSlides turns the year's stats into Wrapped slides sized for a
-// terminal of the given width. Numbers count up and charts grow as progress
-// goes from 0 to 1.
-func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []types.Slide {
+// terminal of the given width. Numbers count up and charts grow with the
+// reveal animation.
+func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.Slide {
 	inner := slideInner(width)
-	n := func(v int) string { return formatInt(scale(v, progress)) }
+	n := func(v int) string { return formatInt(scale(v, anim.Progress)) }
+
+	var slides []types.Slide
+	// rows draws bars in the accent of the slide being built
+	rows := func(counts []analyzer.UsageCount, limit int) []string {
+		counts = analyzer.TopN(counts, limit)
+		accent := theme.Accents[len(slides)%len(theme.Accents)]
+		lines := countRows(counts, newBarLayout(inner-2, counts), accent.Gradient, anim)
+		for i := range lines {
+			lines[i] = "  " + lines[i]
+		}
+		return lines
+	}
 
 	if s.TotalCommands == 0 {
 		return []types.Slide{{
@@ -48,8 +56,6 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 			Art:      typingArt("history"),
 		}}
 	}
-
-	var slides []types.Slide
 
 	// Intro
 	intro := types.Slide{
@@ -70,7 +76,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 	intro.Lines = append(intro.Lines,
 		fmt.Sprintf("%s unique command lines · %s different programs", n(s.UniqueCommands), n(s.UniquePrograms)),
 		"", "Shells:")
-	intro.Lines = append(intro.Lines, splitLines(countRows(s.Shells, 0, "", inner, progress))...)
+	intro.Lines = append(intro.Lines, rows(s.Shells, len(s.Shells))...)
 	slides = append(slides, intro)
 
 	// Top commands
@@ -79,7 +85,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slide := types.Slide{
 			Title:    "Your Top Commands",
 			Headline: fmt.Sprintf("%s was your #1 command", top.Name),
-			Lines:    splitLines(countRows(s.TopPrograms, 5, "", inner, progress)),
+			Lines:    rows(s.TopPrograms, 5),
 			Art:      trophyArt,
 		}
 		if s.HasTimes && s.ActiveDays > 0 {
@@ -105,7 +111,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slide := types.Slide{
 			Title:    "When You're in the Zone",
 			Headline: fmt.Sprintf("Peak hour: %02d:00", peak),
-			Lines:    hourChart(s.HourCounts, progress),
+			Lines:    hourChart(s.HourCounts, anim),
 			Art:      clockArt,
 		}
 		slide.Lines = append(slide.Lines, "",
@@ -126,7 +132,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slide := types.Slide{
 			Title:    "Your Year in Motion",
 			Headline: fmt.Sprintf("Busiest month: %s", time.Month(busiestMonth+1)),
-			Lines:    monthChart(s.MonthCounts, progress),
+			Lines:    monthChart(s.MonthCounts, anim),
 			Art:      calendarArt,
 		}
 		slide.Lines = append(slide.Lines, "",
@@ -140,7 +146,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slide := types.Slide{
 			Title:    "Your Git Story",
 			Headline: fmt.Sprintf("%s git commands", n(s.GitCommands)),
-			Lines:    splitLines(countRows(s.TopGitSubcommands, 5, "", inner, progress)),
+			Lines:    rows(s.TopGitSubcommands, 5),
 			Art:      gitArt,
 		}
 		commits := 0
@@ -172,11 +178,11 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slide.Headline = strings.Join(names, " · ")
 		if len(s.Languages) > 0 {
 			slide.Lines = append(slide.Lines, "Languages:")
-			slide.Lines = append(slide.Lines, splitLines(countRows(s.Languages, 3, "", inner, progress))...)
+			slide.Lines = append(slide.Lines, rows(s.Languages, 3)...)
 		}
 		if len(s.DevOps) > 0 {
 			slide.Lines = append(slide.Lines, "DevOps & Cloud:")
-			slide.Lines = append(slide.Lines, splitLines(countRows(s.DevOps, 3, "", inner, progress))...)
+			slide.Lines = append(slide.Lines, rows(s.DevOps, 3)...)
 		}
 		if len(s.Editors) > 0 {
 			slide.Lines = append(slide.Lines, "",
@@ -190,7 +196,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, progress float64) []
 		slides = append(slides, types.Slide{
 			Title:    "New This Year",
 			Headline: "Fresh additions to your toolbox",
-			Lines:    splitLines(countRows(s.NewPrograms, 5, "", inner, progress)),
+			Lines:    rows(s.NewPrograms, 5),
 			Quotes:   []string{fmt.Sprintf("Welcome to the family, %s.", s.NewPrograms[0].Name)},
 			Art:      newArt,
 		})
@@ -250,7 +256,7 @@ func peakHourQuip(hour int) string {
 // RenderSlide renders one Wrapped slide centered in a width x height area.
 // frame counts animation ticks since the slide appeared and drives its art.
 func RenderSlide(slide types.Slide, label string, index, total int, autoplay bool, frame, width, height int) string {
-	accent := theme.Accents[index%len(theme.Accents)]
+	accent := theme.Accents[index%len(theme.Accents)].Color
 	inner := slideInner(width)
 	muted := theme.Faint
 

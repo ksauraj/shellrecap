@@ -167,9 +167,14 @@ func (m Model) revealProgress() float64 {
 }
 
 // needsAnimation reports whether anything on screen is moving, so the
-// animation ticks can stop when the app is idle
+// animation ticks can stop when the app is idle. Every tab but the
+// timeline has bars with a sweeping glare.
 func (m Model) needsAnimation() bool {
-	return m.loading || m.onWrappedTab() || m.revealProgress() < 1
+	return m.loading || m.tabs[m.activeTab] != "Timeline" || m.revealProgress() < 1
+}
+
+func (m Model) anim() render.Anim {
+	return render.Anim{Progress: m.revealProgress(), Frame: m.frame}
 }
 
 func (m *Model) restartReveal() tea.Cmd {
@@ -384,7 +389,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // slides returns the locally computed Wrapped slides followed by the AI ones
 func (m Model) slides() []types.Slide {
-	slides := render.BuildWrappedSlides(m.wrappedStats, m.width, m.revealProgress())
+	slides := render.BuildWrappedSlides(m.wrappedStats, m.width, m.anim())
 
 	last := &slides[len(slides)-1]
 	switch m.aiStatus {
@@ -475,19 +480,19 @@ func (m *Model) syncContent() {
 		return
 	}
 
-	progress := m.revealProgress()
+	anim := m.anim()
 	var content string
 	switch m.tabs[m.activeTab] {
 	case "Overview":
-		content = render.RenderOverview(m.shellData, m.width, progress)
+		content = render.RenderOverview(m.shellData, m.width, anim)
 	case "Tech Profile":
-		content = render.RenderTechProfile(m.shellData.Insights.TechnicalProfile, m.width, progress)
+		content = render.RenderTechProfile(m.shellData.Insights.TechnicalProfile, m.width, anim)
 	case "Work Patterns":
-		content = render.RenderWorkPatterns(m.shellData.Insights.WorkPatterns, m.width, progress)
+		content = render.RenderWorkPatterns(m.shellData.Insights.WorkPatterns, m.width, anim)
 	case "Tool Usage":
-		content = render.RenderToolUsage(m.shellData.Insights.ToolUsage, m.width, progress)
+		content = render.RenderToolUsage(m.shellData.Insights.ToolUsage, m.width, anim)
 	case "Timeline":
-		content = render.RenderTimeline(m.timelineData, m.width, progress)
+		content = render.RenderTimeline(m.timelineData, m.width, anim)
 	case "Recap":
 		slides := m.slides()
 		if m.currentSectionIndex >= len(slides) {
@@ -510,8 +515,8 @@ func (m Model) View() string {
 
 	// Header with title and version
 	header := lipgloss.NewStyle().Padding(0, 1).Render(
-		lipgloss.NewStyle().Bold(true).Foreground(theme.Peach).Render(">_") + " " +
-			lipgloss.NewStyle().Bold(true).Foreground(theme.Mauve).Render("shellrecap") + " " +
+		lipgloss.NewStyle().Bold(true).Foreground(theme.Orange).Render(">_") + " " +
+			theme.GradientText("shellrecap", theme.Brand, true) + " " +
 			theme.Faint.Render(appVersion))
 
 	// Render tabs
