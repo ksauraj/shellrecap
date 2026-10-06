@@ -57,7 +57,7 @@ func testModel(t *testing.T, apiKey string) Model {
 		width:       80,
 		height:      30,
 		loading:     true,
-		tabs:        []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap", "Timeline"},
+		tabs:        []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap"},
 		logger:      log.New(io.Discard, "", 0),
 		wrappedYear: 2026,
 		autoplay:    true,
@@ -257,21 +257,15 @@ func TestRevealAnimation(t *testing.T) {
 		return m, cmd
 	}
 
-	// Tabs with bars keep animating so the glare can sweep across them
+	// The glare keeps sweeping, so the animation never stops
 	m, cmd := tick(m, revealFrames*2)
-	if cmd == nil || !m.animating {
-		t.Error("animation stopped on a tab with bars")
+	if cmd == nil {
+		t.Error("animation stopped")
 	}
 	if view := plain(m.View()); !regexp.MustCompile(`Total commands\s+5\s`).MatchString(view) {
 		t.Errorf("numbers didn't count up to their final value:\n%s", view)
 	}
 
-	// The timeline has no bars, so it goes idle once revealed
-	m.switchTab(5)
-	m, cmd = tick(m, revealFrames*2)
-	if cmd != nil || m.animating {
-		t.Error("animation kept ticking on the timeline after the reveal finished")
-	}
 }
 
 func TestNoEmojiOnScreen(t *testing.T) {
@@ -345,5 +339,22 @@ func TestScrollPercentNeverNaN(t *testing.T) {
 	m.viewport.GotoBottom()
 	if view := plain(m.View()); !strings.Contains(view, "100%") {
 		t.Errorf("footer doesn't show 100%% at the bottom:\n%s", view)
+	}
+}
+
+func TestRecapSlidesStartTopLeft(t *testing.T) {
+	m := testModel(t, "")
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 40})
+	m.switchTab(4)
+
+	// Like the cards on the other tabs, the slide starts right under the
+	// tab bar at the left edge
+	content := strings.Split(plain(m.View()), "\n")[chromeHeight-1:]
+	if !strings.HasPrefix(content[0], "╭") {
+		t.Errorf("slide doesn't start at the top left:\n%s", strings.Join(content[:3], "\n"))
+	}
+	m.switchTab(0)
+	if overview := strings.Split(plain(m.View()), "\n")[chromeHeight-1:]; !strings.HasPrefix(overview[0], "╭") {
+		t.Errorf("overview doesn't start at the top left:\n%s", strings.Join(overview[:3], "\n"))
 	}
 }

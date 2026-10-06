@@ -206,9 +206,20 @@ func bar(value, max, width int, tone *theme.Tone, frame int) string {
 
 var chartBlocks = []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 
+// columnWidths splits width cells between n columns separated by gap,
+// spreading any leftover cells evenly so the chart fills the width exactly
+func columnWidths(n, width, gap int) []int {
+	usable := maxInt(width-gap*(n-1), n)
+	widths := make([]int, n)
+	for i := range widths {
+		widths[i] = (i+1)*usable/n - i*usable/n
+	}
+	return widths
+}
+
 // columnChart draws counts as vertical bars, height rows tall, in a single
 // color that gets lighter towards the top, with the same glare as the bars
-func columnChart(counts []int, colWidth, gap, height int, tone *theme.Tone, anim Anim) []string {
+func columnChart(counts []int, widths []int, gap, height int, tone *theme.Tone, anim Anim) []string {
 	max := 0
 	for _, c := range counts {
 		max = maxInt(max, c)
@@ -218,6 +229,7 @@ func columnChart(counts []int, colWidth, gap, height int, tone *theme.Tone, anim
 	for r := 0; r < height; r++ {
 		var b strings.Builder
 		rowFromBottom := height - 1 - r
+		x := 0
 		for i, c := range counts {
 			// Eighths of a row filled, counting from the bottom
 			level := 0
@@ -235,11 +247,13 @@ func columnChart(counts []int, colWidth, gap, height int, tone *theme.Tone, anim
 				fill = 8
 			}
 			col := tone.At(float64(rowFromBottom+1) / float64(height))
-			shine := glare(i*(colWidth+gap), anim.Frame) * glareStrength
+			shine := glare(x, anim.Frame) * glareStrength
 			b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(col, shine)).
-				Render(strings.Repeat(chartBlocks[fill], colWidth)))
+				Render(strings.Repeat(chartBlocks[fill], widths[i])))
+			x += widths[i]
 			if i < len(counts)-1 {
 				b.WriteString(strings.Repeat(" ", gap))
+				x += gap
 			}
 		}
 		rows[r] = b.String()
@@ -247,25 +261,39 @@ func columnChart(counts []int, colWidth, gap, height int, tone *theme.Tone, anim
 	return rows
 }
 
-// hourChart draws activity per hour of day with an hour axis underneath
-func hourChart(counts [24]int, tone *theme.Tone, anim Anim) []string {
-	rows := columnChart(counts[:], 2, 0, 3, tone, anim)
+// hourChart draws activity per hour of day across width columns, height
+// rows tall, with an hour axis underneath
+func hourChart(counts [24]int, width, height int, tone *theme.Tone, anim Anim) []string {
+	widths := columnWidths(24, width, 0)
+	rows := columnChart(counts[:], widths, 0, height, tone, anim)
 
-	axis := []byte(strings.Repeat(" ", 48))
-	for _, h := range []int{0, 6, 12, 18} {
-		copy(axis[h*2:], fmt.Sprintf("%02d", h))
+	total := 0
+	for _, w := range widths {
+		total += w
 	}
-	copy(axis[46:], "23")
+	axis := []byte(strings.Repeat(" ", total))
+	x := 0
+	for h, w := range widths {
+		if h%6 == 0 {
+			copy(axis[x:], fmt.Sprintf("%02d", h))
+		}
+		x += w
+	}
+	copy(axis[total-2:], "23")
 	return append(rows, theme.Faint.Render(string(axis)))
 }
 
-// monthChart draws activity per month with month names underneath
-func monthChart(counts [12]int, tone *theme.Tone, anim Anim) []string {
-	rows := columnChart(counts[:], 3, 1, 3, tone, anim)
+// monthChart draws activity per month across width columns, height rows
+// tall, with month names underneath
+func monthChart(counts [12]int, width, height int, tone *theme.Tone, anim Anim) []string {
+	widths := columnWidths(12, width, 1)
+	rows := columnChart(counts[:], widths, 1, height, tone, anim)
 
 	var labels []string
 	for m := time.January; m <= time.December; m++ {
-		labels = append(labels, m.String()[:3])
+		w := widths[m-1]
+		label := m.String()[:minInt(3, w)]
+		labels = append(labels, label+strings.Repeat(" ", w-len(label)))
 	}
 	return append(rows, theme.Faint.Render(strings.Join(labels, " ")))
 }

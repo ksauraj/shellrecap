@@ -12,16 +12,10 @@ import (
 	"github.com/ksauraj/shellrecap/internal/types"
 )
 
-// slideWidth is the card width for a terminal of the given width
+// slideWidth is the card width for a terminal of the given width, the
+// same as a full-width card on the other tabs
 func slideWidth(width int) int {
-	w := width - 4
-	if w > 72 {
-		w = 72
-	}
-	if w < 36 {
-		w = 36
-	}
-	return w
+	return maxInt(gridWidth(width), 36)
 }
 
 // slideInner is the usable text width inside a slide card
@@ -114,7 +108,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		slide := types.Slide{
 			Title:    "When You're in the Zone",
 			Headline: fmt.Sprintf("Peak hour: %02d:00", peak),
-			Lines:    hourChart(s.HourCounts, tone(), anim),
+			Lines:    hourChart(s.HourCounts, inner, 4, tone(), anim),
 			Art:      clockArt,
 		}
 		slide.Lines = append(slide.Lines, "",
@@ -135,7 +129,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		slide := types.Slide{
 			Title:    "Your Year in Motion",
 			Headline: fmt.Sprintf("Busiest month: %s", time.Month(busiestMonth+1)),
-			Lines:    monthChart(s.MonthCounts, tone(), anim),
+			Lines:    monthChart(s.MonthCounts, inner, 4, tone(), anim),
 			Art:      calendarArt,
 		}
 		slide.Lines = append(slide.Lines, "",
@@ -256,9 +250,10 @@ func peakHourQuip(hour int) string {
 	}
 }
 
-// RenderSlide renders one Wrapped slide centered in a width x height area.
-// frame counts animation ticks since the slide appeared and drives its art.
-func RenderSlide(slide types.Slide, label string, index, total int, autoplay bool, frame, width, height int) string {
+// RenderSlide renders one Recap slide, anchored at the top left like the
+// cards on the other tabs. frame counts animation ticks since the slide
+// appeared and drives its art.
+func RenderSlide(slide types.Slide, label string, index, total int, autoplay bool, frame, width int) string {
 	accent := theme.Accents[index%len(theme.Accents)].Color
 	inner := slideInner(width)
 	muted := theme.Faint
@@ -322,12 +317,10 @@ func RenderSlide(slide types.Slide, label string, index, total int, autoplay boo
 		parts = append(parts, "", muted.Render(slide.Footer))
 	}
 
-	card := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(accent).
 		Padding(1, 3).
 		Width(slideWidth(width) - 2).
 		Render(strings.Join(parts, "\n"))
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, card)
 }

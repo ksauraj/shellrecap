@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/theme"
-	"github.com/ksauraj/shellrecap/internal/types"
 	"github.com/muesli/reflow/truncate"
 )
 
@@ -220,7 +219,7 @@ func RenderTechProfile(profile analyzer.TechProfile, width int, anim Anim) strin
 // RenderWorkPatterns renders the work patterns tab
 func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, anim Anim) string {
 	return grid([]cardSpec{
-		{title: "Daily Activity", accent: theme.MauveAccent, wide: true, body: func(int) []string {
+		{title: "Daily Activity", accent: theme.MauveAccent, wide: true, body: func(inner int) []string {
 			if len(patterns.PeakHours) == 0 {
 				return faint("Your history has no timestamps, so activity by hour isn't available")
 			}
@@ -229,7 +228,7 @@ func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, anim Anim) st
 				peaks = append(peaks, highlight(theme.MauveAccent, fmt.Sprintf("%02d:00", hour)))
 			}
 			lines := []string{stat("Peak hours", strings.Join(peaks, theme.Faint.Render(", "))), ""}
-			return append(lines, hourChart(patterns.HourlyActivity, theme.MauveAccent.Tone, anim)...)
+			return append(lines, hourChart(patterns.HourlyActivity, inner, 5, theme.MauveAccent.Tone, anim)...)
 		}},
 		{title: "Productivity", accent: theme.RoseAccent, body: func(inner int) []string {
 			metrics := make([]string, 0, len(patterns.Productivity))
@@ -291,25 +290,4 @@ func RenderToolUsage(usage analyzer.ToolUsage, width int, anim Anim) string {
 		}})
 	}
 	return grid(specs, width)
-}
-
-// RenderTimeline renders the timeline, revealing entries one by one
-func RenderTimeline(entries []types.TimelineEntry, width int, anim Anim) string {
-	return grid([]cardSpec{{title: "Recent Interesting Commands", accent: theme.SageAccent, wide: true, body: func(int) []string {
-		if len(entries) == 0 {
-			return faint("No interesting commands found")
-		}
-		shown := int(math.Ceil(float64(len(entries)) * anim.Progress))
-		lines := make([]string, len(entries))
-		for i, entry := range entries[:shown] {
-			when := "unknown date    "
-			if !entry.Timestamp.IsZero() {
-				when = entry.Timestamp.Format("2006-01-02 15:04")
-			}
-			lines[i] = theme.Faint.Render(when) + "  " +
-				lipgloss.NewStyle().Foreground(theme.Sage).Render(fmt.Sprintf("%-4s", entry.Shell)) + "  " +
-				theme.Normal.Render(oneLine(entry.Command))
-		}
-		return lines
-	}}}, width)
 }

@@ -3,10 +3,7 @@ package analyzer
 
 import (
 	"sort"
-	"strings"
 	"time"
-
-	"github.com/ksauraj/shellrecap/internal/types"
 )
 
 // ShellData contains all the analyzed shell data
@@ -128,75 +125,4 @@ func TopN(counts []UsageCount, n int) []UsageCount {
 		return counts[:n]
 	}
 	return counts
-}
-
-// GenerateTimelineData returns the 15 most recent interesting commands in
-// chronological order
-func GenerateTimelineData(data ShellData) []types.TimelineEntry {
-	// Keep only the latest run of each command
-	latest := make(map[string]types.TimelineEntry)
-
-	for _, shell := range SortedShells(data) {
-		for _, entry := range data.Histories[shell] {
-			if !isInterestingCommand(entry.Command) {
-				continue
-			}
-			if prev, ok := latest[entry.Command]; ok && prev.Timestamp.After(entry.Timestamp) {
-				continue
-			}
-			latest[entry.Command] = types.TimelineEntry{
-				Timestamp: entry.Timestamp,
-				Command:   entry.Command,
-				Shell:     shell,
-			}
-		}
-	}
-
-	timelineData := make([]types.TimelineEntry, 0, len(latest))
-	for _, entry := range latest {
-		timelineData = append(timelineData, entry)
-	}
-	sort.Slice(timelineData, func(i, j int) bool {
-		if !timelineData[i].Timestamp.Equal(timelineData[j].Timestamp) {
-			return timelineData[i].Timestamp.Before(timelineData[j].Timestamp)
-		}
-		return timelineData[i].Command < timelineData[j].Command
-	})
-
-	if len(timelineData) > 15 {
-		timelineData = timelineData[len(timelineData)-15:]
-	}
-	return timelineData
-}
-
-// isInterestingCommand checks if a command is worth showing in the timeline
-func isInterestingCommand(command string) bool {
-	// List of interesting commands
-	interestingCommands := []string{"git", "docker", "kubectl", "terraform", "ansible", "make", "npm", "go", "python", "java", "ssh", "scp", "curl", "wget", "vim", "nvim", "emacs", "code"}
-
-	// Check if the command contains special characters
-	hasSpecialChars := strings.ContainsAny(command, "|><&;")
-
-	// Check if the command is a typo
-	isTypo := isTypoCommand(command)
-
-	// Check if the command is in the interesting list or has special characters or is a typo
-	for _, interesting := range interestingCommands {
-		if strings.HasPrefix(command, interesting) {
-			return true
-		}
-	}
-
-	return hasSpecialChars || isTypo
-}
-
-// isTypoCommand checks if a command is a common typo
-func isTypoCommand(command string) bool {
-	commonTypos := []string{"sl", "cd..", "pythoon", "gti", "vmi", "nivm", "emasc", "clea", "exot"}
-	for _, typo := range commonTypos {
-		if command == typo {
-			return true
-		}
-	}
-	return false
 }

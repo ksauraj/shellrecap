@@ -118,7 +118,7 @@ shellrecap
 | Key                       | Action                                         |
 |---------------------------|------------------------------------------------|
 | `Tab` / `Shift+Tab`       | Next / previous view                           |
-| `1`-`6`                   | Jump to a view                                 |
+| `1`-`5`                   | Jump to a view                                 |
 | `←/→`                     | Change slides in Recap, switch views elsewhere |
 | `↑/↓`, `PgUp/PgDn`, mouse | Scroll the current view                        |
 | `g` / `G`                 | Jump to top / bottom                           |
@@ -132,7 +132,6 @@ shellrecap
 3. **Work Patterns**: Productivity patterns
 4. **Tool Usage**: Developer tools usage
 5. **Recap**: Your year in the terminal: top commands, peak hours, git story, stack, new tools, typos and persona
-6. **Timeline**: Your most recent interesting commands
 
 ## Development
 

@@ -1,16 +1,7 @@
 // internal/types/types.go
 package types
 
-import "time"
-
-// TimelineEntry represents a single entry in the timeline
-type TimelineEntry struct {
-	Timestamp time.Time
-	Command   string
-	Shell     string
-}
-
-// Slide is a single card of the Wrapped view
+// Slide is a single card of the Recap view
 type Slide struct {
 	Title    string
 	Headline string   // the big stat or statement of the slide

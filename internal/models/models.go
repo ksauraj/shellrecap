@@ -83,8 +83,6 @@ type Model struct {
 	slideTickID         int
 	frame               int
 	revealStart         int // frame the current view or slide appeared at
-	animating           bool
-	timelineData        []types.TimelineEntry
 }
 
 func InitialModel() Model {
@@ -94,7 +92,7 @@ func InitialModel() Model {
 	}
 	logger := log.New(logFile, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 
-	tabs := []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap", "Timeline"}
+	tabs := []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap"}
 
 	// Like any year-in-review, January still looks back at the year before
 	now := time.Now()
@@ -113,7 +111,6 @@ func InitialModel() Model {
 		logger:      logger,
 		wrappedYear: wrappedYear,
 		autoplay:    true,
-		animating:   true, // Init starts the animation ticks
 	}
 }
 
@@ -121,6 +118,8 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		loadShellData(),
 		tea.EnterAltScreen,
+		// Every view has something moving (the splash, the glare on the
+		// bars or the slide art), so the animation ticks run throughout
 		animTick(),
 	)
 }
@@ -143,15 +142,6 @@ func animTick() tea.Cmd {
 	})
 }
 
-// startAnimation starts the animation ticks unless they are already running
-func (m *Model) startAnimation() tea.Cmd {
-	if m.animating {
-		return nil
-	}
-	m.animating = true
-	return animTick()
-}
-
 // revealProgress is how far the current view's intro animation has got,
 // from 0 to 1
 func (m Model) revealProgress() float64 {
@@ -166,40 +156,32 @@ func (m Model) revealProgress() float64 {
 	return 1 - math.Pow(1-p, 3)
 }
 
-// needsAnimation reports whether anything on screen is moving, so the
-// animation ticks can stop when the app is idle. Every tab but the
-// timeline has bars with a sweeping glare.
-func (m Model) needsAnimation() bool {
-	return m.loading || m.tabs[m.activeTab] != "Timeline" || m.revealProgress() < 1
-}
-
 func (m Model) anim() render.Anim {
 	return render.Anim{Progress: m.revealProgress(), Frame: m.frame}
 }
 
-func (m *Model) restartReveal() tea.Cmd {
+// restartReveal replays the reveal animation for the view on screen
+func (m *Model) restartReveal() {
 	m.revealStart = m.frame
-	return m.startAnimation()
 }
 
 func (m Model) onWrappedTab() bool {
 	return m.tabs[m.activeTab] == "Recap"
 }
 
-func (m *Model) switchTab(tab int) tea.Cmd {
+func (m *Model) switchTab(tab int) {
 	m.activeTab = (tab + len(m.tabs)) % len(m.tabs)
-	cmd := m.restartReveal()
+	m.restartReveal()
 	m.syncContent()
 	m.viewport.GotoTop()
-	return cmd
 }
 
 func (m *Model) changeSlide(delta int) tea.Cmd {
 	total := len(m.slides())
 	m.currentSectionIndex = ((m.currentSectionIndex+delta)%total + total) % total
-	reveal := m.restartReveal()
+	m.restartReveal()
 	m.syncContent()
-	return tea.Batch(reveal, m.scheduleSlideTick())
+	return m.scheduleSlideTick()
 }
 
 // scheduleSlideTick restarts the autoplay countdown
@@ -281,26 +263,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Re-read the history and ask Gemini again, skipping the cache
 			m.loading, m.refreshing, m.loadStart = true, true, m.frame
 			m.aiRequestID++ // ignore any request that is still in flight
-			return m, tea.Batch(loadShellData(), m.startAnimation())
+			return m, loadShellData()
 		case "tab":
-			return m, m.switchTab(m.activeTab + 1)
+			m.switchTab(m.activeTab + 1)
+			return m, nil
 		case "shift+tab":
-			return m, m.switchTab(m.activeTab - 1)
+			m.switchTab(m.activeTab - 1)
+			return m, nil
 		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 			if tab := int(key[0] - '1'); tab < len(m.tabs) {
-				return m, m.switchTab(tab)
+				m.switchTab(tab)
 			}
 			return m, nil
 		case "right", "l", "n":
 			if m.onWrappedTab() {
 				return m, m.changeSlide(1)
 			}
-			return m, m.switchTab(m.activeTab + 1)
+			m.switchTab(m.activeTab + 1)
+			return m, nil
 		case "left", "h", "p":
 			if m.onWrappedTab() {
 				return m, m.changeSlide(-1)
 			}
-			return m, m.switchTab(m.activeTab - 1)
+			m.switchTab(m.activeTab - 1)
+			return m, nil
 		case "home", "g":
 			m.viewport.GotoTop()
 			return m, nil
@@ -324,11 +310,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		force := m.refreshing
 		m.loading, m.refreshing = false, false
 		m.shellData = msg
-		m.timelineData = analyzer.GenerateTimelineData(msg)
 		m.wrappedStats = analyzer.ComputeWrapped(msg, m.wrappedYear)
 		m.currentSectionIndex = 0
 
-		cmds := []tea.Cmd{m.restartReveal(), m.scheduleSlideTick(), m.loadAISlides(force)}
+		m.restartReveal()
+		cmds := []tea.Cmd{m.scheduleSlideTick(), m.loadAISlides(force)}
 		m.syncContent()
 		return m, tea.Batch(cmds...)
 
@@ -374,11 +360,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case animTickMsg:
 		m.frame++
 		m.syncContent()
-		if m.needsAnimation() {
-			return m, animTick()
-		}
-		m.animating = false
-		return m, nil
+		return m, animTick()
 
 	default:
 		var cmd tea.Cmd
@@ -491,8 +473,6 @@ func (m *Model) syncContent() {
 		content = render.RenderWorkPatterns(m.shellData.Insights.WorkPatterns, m.width, anim)
 	case "Tool Usage":
 		content = render.RenderToolUsage(m.shellData.Insights.ToolUsage, m.width, anim)
-	case "Timeline":
-		content = render.RenderTimeline(m.timelineData, m.width, anim)
 	case "Recap":
 		slides := m.slides()
 		if m.currentSectionIndex >= len(slides) {
@@ -503,7 +483,7 @@ func (m *Model) syncContent() {
 			label = "SHELLRECAP"
 		}
 		content = render.RenderSlide(slides[m.currentSectionIndex], label,
-			m.currentSectionIndex, len(slides), m.autoplay, m.frame-m.revealStart, m.viewport.Width, m.viewport.Height)
+			m.currentSectionIndex, len(slides), m.autoplay, m.frame-m.revealStart, m.viewport.Width)
 	}
 	m.viewport.SetContent(content)
 }
