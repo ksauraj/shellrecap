@@ -12,9 +12,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/cache"
-	"github.com/ksauraj/shellrecap/internal/gemini"
 	"github.com/ksauraj/shellrecap/internal/render"
 	"github.com/ksauraj/shellrecap/internal/theme"
 	"github.com/ksauraj/shellrecap/internal/types"
@@ -31,7 +31,8 @@ const (
 	// minSplash keeps the loading animation on screen long enough to enjoy
 	minSplash = 4 * time.Second
 
-	appVersion = "v1.1.0"
+	// Version is the version shown in the header and by --version
+	Version = "v1.1.0"
 )
 
 type aiStatus int
@@ -43,13 +44,19 @@ const (
 	aiDisabled
 )
 
-// aiWrappedMsg carries the result of the Gemini request
+// aiWrappedMsg carries the result of the AI request
 type aiWrappedMsg struct {
 	id       int
-	sections []gemini.Section
+	result   ai.Result
 	summary  string
 	commands int
 	err      error
+}
+
+// Config holds the command line options
+type Config struct {
+	AI      ai.Options
+	NoCache bool // always ask for fresh AI slides
 }
 
 // slideTickMsg advances the Wrapped slides. The id lets manual navigation
@@ -72,9 +79,14 @@ type Model struct {
 	logger              *log.Logger
 	wrappedYear         int
 	wrappedStats        analyzer.WrappedStats
-	aiSections          []gemini.Section
+	aiOpts              ai.Options
+	noCache             bool
+	aiSections          []ai.Section
 	aiStatus            aiStatus
 	aiErr               error
+	aiTarget            ai.Target     // who wrote the AI slides
+	aiDuration          time.Duration // how long they took to write
+	aiFailures          []error       // providers that failed before aiTarget
 	aiCreatedAt         time.Time
 	aiFromCache         bool
 	aiRequestID         int
@@ -85,7 +97,7 @@ type Model struct {
 	revealStart         int // frame the current view or slide appeared at
 }
 
-func InitialModel() Model {
+func InitialModel(cfg Config) Model {
 	logFile, err := os.OpenFile("shellrecap.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -111,6 +123,8 @@ func InitialModel() Model {
 		logger:      logger,
 		wrappedYear: wrappedYear,
 		autoplay:    true,
+		aiOpts:      cfg.AI,
+		noCache:     cfg.NoCache,
 	}
 }
 
@@ -197,36 +211,59 @@ func (m *Model) scheduleSlideTick() tea.Cmd {
 }
 
 // loadAISlides reuses cached AI slides while they are fresh and only calls
-// Gemini when they aren't, or when force is set by the refresh key
+// the AI when they aren't, when force is set by the refresh key, or when
+// caching is turned off with --no-cache
 func (m *Model) loadAISlides(force bool) tea.Cmd {
 	summary := m.wrappedStats.Summary()
 	commands := m.wrappedStats.TotalCommands
-	entry, cached := cache.LoadWrapped(m.wrappedYear)
+	m.aiSections, m.aiErr, m.aiFailures = nil, nil, nil
 
-	m.aiSections, m.aiErr = nil, nil
-	fresh := cached && entry.FreshFor(gemini.Model(), summary, commands, time.Now())
-	// Without a key, stale slides are still better than none
-	if cached && ((fresh && !force) || !gemini.Available()) {
-		m.useCachedAISlides(entry)
-		return nil
+	if !force && !m.noCache {
+		// Same order as the requests: Gemini's slides first, then Groq's
+		for _, target := range ai.Targets(m.aiOpts) {
+			if entry, ok := cache.LoadWrapped(m.wrappedYear, target); ok && entry.FreshFor(summary, commands, time.Now()) {
+				m.useCachedAISlides(entry)
+				return nil
+			}
+		}
 	}
-	if !gemini.Available() {
+	if !ai.AnyAvailable(m.aiOpts) {
+		// Without a key, stale slides are still better than none
+		if entry, ok := m.anyCachedAISlides(); ok {
+			m.useCachedAISlides(entry)
+			return nil
+		}
 		m.aiStatus = aiDisabled
 		return nil
 	}
 
 	m.aiStatus = aiPending
 	m.aiRequestID++
-	id := m.aiRequestID
+	id, opts := m.aiRequestID, m.aiOpts
 	return func() tea.Msg {
-		resp, err := gemini.GenerateWrapped(summary)
-		return aiWrappedMsg{id: id, sections: resp.Sections, summary: summary, commands: commands, err: err}
+		result, err := ai.Generate(summary, opts)
+		return aiWrappedMsg{id: id, result: result, summary: summary, commands: commands, err: err}
 	}
+}
+
+// anyCachedAISlides returns the first cached slides, however old
+func (m Model) anyCachedAISlides() (cache.WrappedEntry, bool) {
+	if m.noCache {
+		return cache.WrappedEntry{}, false
+	}
+	for _, target := range ai.Targets(m.aiOpts) {
+		if entry, ok := cache.LoadWrapped(m.wrappedYear, target); ok {
+			return entry, true
+		}
+	}
+	return cache.WrappedEntry{}, false
 }
 
 func (m *Model) useCachedAISlides(entry cache.WrappedEntry) {
 	m.aiStatus = aiDone
 	m.aiSections = entry.Sections
+	m.aiTarget = entry.Target()
+	m.aiDuration = time.Duration(entry.Duration * float64(time.Second))
 	m.aiCreatedAt = entry.CreatedAt
 	m.aiFromCache = true
 }
@@ -324,9 +361,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
-			m.logger.Printf("Error generating wrapped response: %v", msg.err)
+			m.logger.Printf("Error generating AI slides: %v", msg.err)
 			m.aiErr = msg.err
-			if entry, ok := cache.LoadWrapped(m.wrappedYear); ok {
+			if entry, ok := m.anyCachedAISlides(); ok {
 				m.useCachedAISlides(entry)
 			} else {
 				m.aiStatus = aiFailed
@@ -335,16 +372,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.logger.Printf("Generated %d AI sections", len(msg.sections))
-		m.aiStatus, m.aiSections, m.aiCreatedAt, m.aiFromCache = aiDone, msg.sections, time.Now(), false
+		result := msg.result
+		for _, failure := range result.Failures {
+			m.logger.Printf("AI provider failed, falling back: %v", failure)
+		}
+		m.logger.Printf("Generated %d AI slides with %s in %s", len(result.Sections), result.Target, result.Duration)
+		m.aiStatus, m.aiSections, m.aiFromCache = aiDone, result.Sections, false
+		m.aiTarget, m.aiDuration, m.aiFailures, m.aiCreatedAt = result.Target, result.Duration, result.Failures, time.Now()
 		m.syncContent()
 		return m, saveAISlides(cache.WrappedEntry{
 			Year:      m.wrappedYear,
-			Model:     gemini.Model(),
+			Provider:  result.Target.Provider,
+			Model:     result.Target.Model,
 			Summary:   msg.summary,
 			Commands:  msg.commands,
 			CreatedAt: m.aiCreatedAt,
-			Sections:  msg.sections,
+			Duration:  result.Duration.Seconds(),
+			Sections:  result.Sections,
 		}, m.logger)
 
 	case slideTickMsg:
@@ -376,21 +420,24 @@ func (m Model) slides() []types.Slide {
 	last := &slides[len(slides)-1]
 	switch m.aiStatus {
 	case aiPending:
-		last.Footer = render.Spinner(m.frame) + " Gemini is writing a few more slides for you..."
+		last.Footer = render.Spinner(m.frame) + " AI is writing a few more slides for you..."
 	case aiDisabled:
-		last.Footer = "Set GEMINI_API_KEY to unlock AI-written slides."
+		last.Footer = ai.KeyHint(m.aiOpts)
 	case aiFailed:
 		last.Footer = "AI slides unavailable: " + m.aiErr.Error()
 	}
 
-	footer := "Generated by Gemini " + ago(m.aiCreatedAt) + "."
+	footer := fmt.Sprintf("Written by %s in %.1fs.", m.aiTarget, m.aiDuration.Seconds())
+	if len(m.aiFailures) > 0 {
+		footer = fmt.Sprintf("Written by %s in %.1fs, after %v", m.aiTarget, m.aiDuration.Seconds(), m.aiFailures[0])
+	}
 	switch {
 	case m.aiFromCache && m.aiErr != nil:
-		footer = fmt.Sprintf("Couldn't regenerate (%v), showing slides from %s.", m.aiErr, ago(m.aiCreatedAt))
-	case m.aiFromCache && gemini.Available():
-		footer = "Cached from " + ago(m.aiCreatedAt) + " · r: regenerate"
+		footer = fmt.Sprintf("Couldn't regenerate (%v), showing slides %s wrote %s.", m.aiErr, m.aiTarget, ago(m.aiCreatedAt))
+	case m.aiFromCache && ai.AnyAvailable(m.aiOpts):
+		footer = fmt.Sprintf("Cached from %s · %s · r: regenerate", ago(m.aiCreatedAt), m.aiTarget)
 	case m.aiFromCache:
-		footer = "Cached from " + ago(m.aiCreatedAt) + "."
+		footer = fmt.Sprintf("Cached from %s · %s", ago(m.aiCreatedAt), m.aiTarget)
 	}
 
 	for _, section := range m.aiSections {
@@ -497,7 +544,7 @@ func (m Model) View() string {
 	header := lipgloss.NewStyle().Padding(0, 1).Render(
 		lipgloss.NewStyle().Bold(true).Foreground(theme.Brand.Tone.Color(0.3)).Render(">_") + " " +
 			lipgloss.NewStyle().Bold(true).Foreground(theme.Brand.Color).Render("shellrecap") + " " +
-			theme.Faint.Render(appVersion))
+			theme.Faint.Render(Version))
 
 	// Render tabs
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)

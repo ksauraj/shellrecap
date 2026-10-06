@@ -13,9 +13,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/cache"
-	"github.com/ksauraj/shellrecap/internal/gemini"
 )
 
 // TestMain points the cache at a temporary directory so tests never touch
@@ -49,10 +49,25 @@ func testData() analyzer.ShellData {
 // made because the tests never run the returned commands.
 func testModel(t *testing.T, apiKey string) Model {
 	t.Helper()
-	t.Setenv("GEMINI_API_KEY", apiKey)
+	return testModelWith(t, Config{}, apiKey, "")
+}
+
+var (
+	geminiTarget = ai.Target{Provider: ai.Gemini, Model: "test-model"}
+	groqTarget   = ai.Target{Provider: ai.Groq, Model: "openai/gpt-oss-120b"}
+)
+
+// testModelWith is testModel with command line options and a Groq key
+func testModelWith(t *testing.T, cfg Config, geminiKey, groqKey string) Model {
+	t.Helper()
+	t.Setenv("GEMINI_API_KEY", geminiKey)
 	t.Setenv("GEMINI_MODEL", "test-model")
+	t.Setenv("GROQ_API_KEY", groqKey)
+	t.Setenv("GROQ_MODEL", "")
 
 	m := Model{
+		aiOpts:      cfg.AI,
+		noCache:     cfg.NoCache,
 		viewport:    viewport.New(80, 26),
 		width:       80,
 		height:      30,
@@ -65,6 +80,10 @@ func testModel(t *testing.T, apiKey string) Model {
 	m = update(t, m, testData())
 	m.switchTab(4)
 	return settle(m)
+}
+
+func aiResult(target ai.Target, sections ...ai.Section) ai.Result {
+	return ai.Result{Target: target, Sections: sections, Duration: 1500 * time.Millisecond}
 }
 
 func update(t *testing.T, m Model, msg tea.Msg) Model {
@@ -104,15 +123,15 @@ func TestWrappedAppendsAISlides(t *testing.T) {
 	}
 	localSlides := len(m.slides())
 
-	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, sections: []gemini.Section{
-		{Title: "**Cloud Wrangler** \U0001F680", Description: "You live in kubectl. \u2728", Quotes: []string{"get pods, get life"}},
-	}})
+	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, result: aiResult(geminiTarget,
+		ai.Section{Title: "**Cloud Wrangler** \U0001F680", Description: "You live in kubectl. \u2728", Quotes: []string{"get pods, get life"}},
+	)})
 
 	if got := len(m.slides()); got != localSlides+1 {
 		t.Fatalf("got %d slides, want %d", got, localSlides+1)
 	}
 	view := lastSlide(t, m)
-	for _, want := range []string{"Cloud Wrangler", "You live in kubectl.", "get pods, get life", "· AI", "just now"} {
+	for _, want := range []string{"Cloud Wrangler", "You live in kubectl.", "get pods, get life", "· AI", "Written by Gemini (test-model) in 1.5s"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("AI slide is missing %q:\n%s", want, view)
 		}
@@ -128,7 +147,7 @@ func TestAIResultIsCachedAndReused(t *testing.T) {
 
 	updated, cmd := m.Update(aiWrappedMsg{
 		id:       m.aiRequestID,
-		sections: []gemini.Section{{Title: "Cloud Wrangler", Description: "d"}},
+		result:   aiResult(geminiTarget, ai.Section{Title: "Cloud Wrangler", Description: "d"}),
 		summary:  m.wrappedStats.Summary(),
 		commands: m.wrappedStats.TotalCommands,
 	})
@@ -138,8 +157,8 @@ func TestAIResultIsCachedAndReused(t *testing.T) {
 	}
 	cmd() // write the cache
 
-	entry, ok := cache.LoadWrapped(2026)
-	if !ok || entry.Sections[0].Title != "Cloud Wrangler" || entry.Model != "test-model" {
+	entry, ok := cache.LoadWrapped(2026, geminiTarget)
+	if !ok || entry.Sections[0].Title != "Cloud Wrangler" || entry.Duration != 1.5 {
 		t.Fatalf("cache = %+v, %v", entry, ok)
 	}
 
@@ -149,7 +168,7 @@ func TestAIResultIsCachedAndReused(t *testing.T) {
 		t.Errorf("status = %v, fromCache = %v, requests = %d; want cached slides and no request",
 			next.aiStatus, next.aiFromCache, next.aiRequestID)
 	}
-	if view := lastSlide(t, next); !strings.Contains(view, "Cached from just now · r: regenerate") {
+	if view := lastSlide(t, next); !strings.Contains(view, "Cached from just now · Gemini (test-model) · r: regenerate") {
 		t.Errorf("cached slide doesn't say it's cached:\n%s", view)
 	}
 }
@@ -159,8 +178,8 @@ func TestRefreshKeyBypassesCache(t *testing.T) {
 	t.Setenv("GEMINI_MODEL", "test-model")
 	stats := analyzer.ComputeWrapped(testData(), 2026)
 	if err := cache.SaveWrapped(cache.WrappedEntry{
-		Year: 2026, Model: "test-model", Summary: stats.Summary(), Commands: stats.TotalCommands,
-		CreatedAt: time.Now(), Sections: []gemini.Section{{Title: "Old"}},
+		Year: 2026, Provider: ai.Gemini, Model: "test-model", Summary: stats.Summary(), Commands: stats.TotalCommands,
+		CreatedAt: time.Now(), Sections: []ai.Section{{Title: "Old"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +205,7 @@ func TestStaleAIResponseIsIgnored(t *testing.T) {
 	m = update(t, m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	m = update(t, m, testData())
 
-	m = update(t, m, aiWrappedMsg{id: stale, sections: []gemini.Section{{Title: "Stale"}}})
+	m = update(t, m, aiWrappedMsg{id: stale, result: aiResult(geminiTarget, ai.Section{Title: "Stale"})})
 	if m.aiStatus != aiPending || len(m.aiSections) != 0 {
 		t.Errorf("response from before the refresh was used: %+v", m.aiSections)
 	}
@@ -196,13 +215,13 @@ func TestAIErrorFallsBackToCache(t *testing.T) {
 	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
 	m := testModel(t, "fake-key")
 	cache.SaveWrapped(cache.WrappedEntry{
-		Year: 2026, Model: "test-model", CreatedAt: time.Now().Add(-3 * time.Hour),
-		Sections: []gemini.Section{{Title: "Cached Wrangler"}},
+		Year: 2026, Provider: ai.Gemini, Model: "test-model", CreatedAt: time.Now().Add(-3 * time.Hour),
+		Sections: []ai.Section{{Title: "Cached Wrangler"}},
 	})
 
 	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, err: errors.New("quota exceeded")})
 	view := lastSlide(t, m)
-	for _, want := range []string{"Cached Wrangler", "quota exceeded", "showing slides from 3"} {
+	for _, want := range []string{"Cached Wrangler", "quota exceeded", "hours ago"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("fallback slide is missing %q:\n%s", want, view)
 		}
@@ -270,7 +289,7 @@ func TestRevealAnimation(t *testing.T) {
 
 func TestNoEmojiOnScreen(t *testing.T) {
 	m := testModel(t, "fake-key")
-	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, sections: []gemini.Section{{Title: "\U0001F389 Party", Description: "\u2b50 star"}}})
+	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, result: aiResult(geminiTarget, ai.Section{Title: "\U0001F389 Party", Description: "\u2b50 star"})})
 
 	views := []string{loadingView(m)}
 	for tab := range m.tabs {
@@ -356,5 +375,65 @@ func TestRecapSlidesStartTopLeft(t *testing.T) {
 	m.switchTab(0)
 	if overview := strings.Split(plain(m.View()), "\n")[chromeHeight-1:]; !strings.HasPrefix(overview[0], "╭") {
 		t.Errorf("overview doesn't start at the top left:\n%s", strings.Join(overview[:3], "\n"))
+	}
+}
+
+func TestGroqFallbackIsShown(t *testing.T) {
+	m := testModelWith(t, Config{}, "gemini-key", "groq-key")
+	result := aiResult(groqTarget, ai.Section{Title: "Fast Fallback"})
+	result.Failures = []error{errors.New("Gemini: gemini API error (HTTP 503): high demand")}
+	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, result: result})
+
+	view := plain(lastSlide(t, m))
+	for _, want := range []string{"Fast Fallback", "Written by Groq (openai/gpt-oss-120b) in 1.5s", "after Gemini"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("fallback slide is missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestProviderFlagUsesItsOwnCache(t *testing.T) {
+	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
+	t.Setenv("GEMINI_MODEL", "test-model")
+	stats := analyzer.ComputeWrapped(testData(), 2026)
+	cache.SaveWrapped(cache.WrappedEntry{
+		Year: 2026, Provider: ai.Gemini, Model: "test-model", Summary: stats.Summary(), Commands: stats.TotalCommands,
+		CreatedAt: time.Now(), Sections: []ai.Section{{Title: "From Gemini"}},
+	})
+
+	// The default order picks up Gemini's cached slides...
+	if m := testModelWith(t, Config{}, "gemini-key", "groq-key"); !m.aiFromCache || m.aiTarget.Provider != ai.Gemini {
+		t.Errorf("default run didn't use Gemini's cache: %+v", m.aiTarget)
+	}
+	// ...but testing Groq asks Groq instead of showing Gemini's slides
+	m := testModelWith(t, Config{AI: ai.Options{Provider: ai.Groq}}, "gemini-key", "groq-key")
+	if m.aiFromCache || m.aiStatus != aiPending {
+		t.Errorf("--provider groq used another provider's cache: status = %v, target = %+v", m.aiStatus, m.aiTarget)
+	}
+}
+
+func TestNoCacheAlwaysAsks(t *testing.T) {
+	t.Setenv("SHELLRECAP_CACHE_DIR", t.TempDir())
+	t.Setenv("GEMINI_MODEL", "test-model")
+	stats := analyzer.ComputeWrapped(testData(), 2026)
+	cache.SaveWrapped(cache.WrappedEntry{
+		Year: 2026, Provider: ai.Gemini, Model: "test-model", Summary: stats.Summary(), Commands: stats.TotalCommands,
+		CreatedAt: time.Now(), Sections: []ai.Section{{Title: "Cached"}},
+	})
+
+	m := testModelWith(t, Config{NoCache: true}, "gemini-key", "")
+	if m.aiFromCache || m.aiStatus != aiPending {
+		t.Errorf("--no-cache used the cache: status = %v", m.aiStatus)
+	}
+}
+
+func TestKeyHintMatchesProvider(t *testing.T) {
+	m := testModelWith(t, Config{AI: ai.Options{Provider: ai.Groq}}, "", "")
+	if view := lastSlide(t, m); !strings.Contains(view, "Set GROQ_API_KEY") {
+		t.Errorf("hint doesn't mention GROQ_API_KEY:\n%s", view)
+	}
+	m = testModelWith(t, Config{}, "", "")
+	if view := lastSlide(t, m); !strings.Contains(view, "GEMINI_API_KEY or GROQ_API_KEY") {
+		t.Errorf("hint doesn't mention both keys:\n%s", view)
 	}
 }

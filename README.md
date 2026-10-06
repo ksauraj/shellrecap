@@ -76,42 +76,69 @@ Invoke-WebRequest -Uri "https://github.com/ksauraj/shellrecap/releases/latest/do
 
 Requirements:
 - Go 1.20 or higher
-- A Gemini API key (optional, for the AI-written slides)
+- A Gemini and/or Groq API key (optional, for the AI-written slides)
 
 ```bash
 # Clone repository
 git clone https://github.com/ksauraj/shellrecap.git
 cd shellrecap
 
-# Build, optionally compiling in an API key
+# Build, optionally compiling in API keys
 make build
-make build GEMINI_API_KEY=your_api_key_here
+make build GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key
 
 # Or using go build directly
-go build -ldflags "-X github.com/ksauraj/shellrecap/internal/gemini.apiKey=YOUR_API_KEY" ./cmd/shellrecap
+go build -ldflags "-X github.com/ksauraj/shellrecap/internal/ai.geminiAPIKey=YOUR_GEMINI_KEY \
+  -X github.com/ksauraj/shellrecap/internal/ai.groqAPIKey=YOUR_GROQ_KEY" ./cmd/shellrecap
 ```
 
-### Gemini (optional)
+### AI slides (optional)
 
-The Recap view is computed locally from your history. With a Gemini API key it also gets a few
+The Recap view is computed locally from your history. With an API key it also gets a few
 AI-written slides (persona, roast, superpower and forecast). Only aggregate stats such as program
 names and counts are sent, never full command lines.
 
+shellrecap asks **Gemini** first and falls back to **Groq** if Gemini fails or has no key. Both
+work on their free tiers.
+
+| Provider | Default model         | Free tier limits (per account)                                  |
+|----------|-----------------------|-----------------------------------------------------------------|
+| Gemini   | `gemini-3.8-flash`    | See [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) |
+| Groq     | `openai/gpt-oss-120b` | 30 requests/min, 1,000 requests/day, 8K tokens/min, 200K tokens/day |
+
 | Variable               | Description                                                      |
 |------------------------|------------------------------------------------------------------|
-| `GEMINI_API_KEY`       | API key, used when none was compiled in with `-ldflags`          |
-| `GEMINI_MODEL`         | Model to use, defaults to `gemini-3.8-flash`                     |
+| `GEMINI_API_KEY`       | Gemini API key, used when none was compiled in with `-ldflags`   |
+| `GROQ_API_KEY`         | Groq API key, used when none was compiled in with `-ldflags`     |
+| `GEMINI_MODEL`         | Gemini model to use when `--model` isn't given                   |
+| `GROQ_MODEL`           | Groq model to use when `--model` isn't given                     |
 | `SHELLRECAP_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/shellrecap` on Linux |
 
-AI slides are cached per year, so Gemini isn't called on every launch. Cached slides are reused
-as long as your stats are unchanged, or for up to a week while your command count stays within
-10% of when they were generated. Press `r` to re-read your history and regenerate them.
+AI slides are cached per year and per model, so the AI isn't called on every launch. Cached
+slides are reused as long as your stats are unchanged, or for up to a week while your command
+count stays within 10% of when they were generated. Press `r` to re-read your history and
+regenerate them. Each AI slide says which model wrote it and how long it took.
 
 ## Usage
 
 ### Basic Usage
 ```bash
 shellrecap
+```
+
+### Command Line Options
+| Flag                  | Description                                                        |
+|-----------------------|--------------------------------------------------------------------|
+| `--provider <name>`   | `auto` (default: Gemini, falling back to Groq), `gemini` or `groq` |
+| `--model <model>`     | Model to use with `--provider`, e.g. `openai/gpt-oss-20b`          |
+| `--no-cache`          | Always ask the AI for fresh slides                                 |
+| `--version`           | Print the version                                                  |
+
+```bash
+# Compare providers and models
+shellrecap --provider groq --no-cache
+shellrecap --provider groq --model openai/gpt-oss-20b --no-cache
+shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 ```
 
 ### Navigation Keys
@@ -166,10 +193,10 @@ export PATH=$PATH:$(pwd)
 ```
 
 3. **API Key Issues**
-Set the key at runtime, or build with it:
+Set the keys at runtime, or build with them:
 ```bash
-export GEMINI_API_KEY=your_api_key_here
-make build GEMINI_API_KEY=your_api_key_here
+export GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key
+make build GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key
 ```
 
 ## Contributing

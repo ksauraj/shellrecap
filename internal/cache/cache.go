@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	"github.com/ksauraj/shellrecap/internal/gemini"
+	"github.com/ksauraj/shellrecap/internal/ai"
 )
 
 const (
@@ -19,14 +20,21 @@ const (
 	maxCommandDrift = 0.10
 )
 
-// WrappedEntry is a cached Gemini response for one year's Wrapped
+// WrappedEntry is a cached AI response for one year's Recap
 type WrappedEntry struct {
-	Year      int              `json:"year"`
-	Model     string           `json:"model"`
-	Summary   string           `json:"summary"`
-	Commands  int              `json:"commands"`
-	CreatedAt time.Time        `json:"created_at"`
-	Sections  []gemini.Section `json:"sections"`
+	Year      int          `json:"year"`
+	Provider  string       `json:"provider"`
+	Model     string       `json:"model"`
+	Summary   string       `json:"summary"`
+	Commands  int          `json:"commands"`
+	CreatedAt time.Time    `json:"created_at"`
+	Duration  float64      `json:"duration_seconds"`
+	Sections  []ai.Section `json:"sections"`
+}
+
+// Target is the provider and model that wrote the entry
+func (e WrappedEntry) Target() ai.Target {
+	return ai.Target{Provider: e.Provider, Model: e.Model}
 }
 
 // Dir returns the cache directory. SHELLRECAP_CACHE_DIR overrides the
@@ -42,17 +50,21 @@ func Dir() (string, error) {
 	return filepath.Join(base, "shellrecap"), nil
 }
 
-func wrappedPath(year int) (string, error) {
+// wrappedPath gives every provider and model its own file, so trying out
+// another model never overwrites the slides of the usual one
+func wrappedPath(year int, target ai.Target) (string, error) {
 	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, fmt.Sprintf("wrapped-%d.json", year)), nil
+	model := strings.NewReplacer("/", "_", ":", "_", "\\", "_").Replace(target.Model)
+	return filepath.Join(dir, fmt.Sprintf("wrapped-%d-%s-%s.json", year, target.Provider, model)), nil
 }
 
-// LoadWrapped returns the cached AI slides for the given year, if any
-func LoadWrapped(year int) (WrappedEntry, bool) {
-	path, err := wrappedPath(year)
+// LoadWrapped returns the cached AI slides written by target for the given
+// year, if any
+func LoadWrapped(year int, target ai.Target) (WrappedEntry, bool) {
+	path, err := wrappedPath(year, target)
 	if err != nil {
 		return WrappedEntry{}, false
 	}
@@ -61,7 +73,8 @@ func LoadWrapped(year int) (WrappedEntry, bool) {
 		return WrappedEntry{}, false
 	}
 	var entry WrappedEntry
-	if err := json.Unmarshal(data, &entry); err != nil || entry.Year != year || len(entry.Sections) == 0 {
+	if err := json.Unmarshal(data, &entry); err != nil || entry.Year != year || entry.Target() != target ||
+		len(entry.Sections) == 0 {
 		return WrappedEntry{}, false
 	}
 	return entry, true
@@ -69,7 +82,7 @@ func LoadWrapped(year int) (WrappedEntry, bool) {
 
 // SaveWrapped stores AI slides so later runs can skip the API call
 func SaveWrapped(entry WrappedEntry) error {
-	path, err := wrappedPath(entry.Year)
+	path, err := wrappedPath(entry.Year, entry.Target())
 	if err != nil {
 		return err
 	}
@@ -92,10 +105,7 @@ func SaveWrapped(entry WrappedEntry) error {
 // FreshFor reports whether the entry can be reused instead of calling the
 // API. Identical stats are always reused; otherwise the entry is reused for
 // up to a week as long as the command count hasn't drifted much.
-func (e WrappedEntry) FreshFor(model, summary string, commands int, now time.Time) bool {
-	if e.Model != model {
-		return false
-	}
+func (e WrappedEntry) FreshFor(summary string, commands int, now time.Time) bool {
 	if e.Summary == summary {
 		return true
 	}
