@@ -64,7 +64,8 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 		lines[i] = strings.Join(row, "")
 	}
 
-	// Sweep the sunset gradient across the banner, there and back again
+	// Sweep a band of light across the banner, there and back again,
+	// shading it between tones of the brand color
 	var banner strings.Builder
 	for i, line := range lines {
 		if i > 0 {
@@ -75,21 +76,29 @@ func RenderLoading(frame int, refreshing bool, width, height int) string {
 			if pos >= bannerWaveWidth {
 				pos = 2*bannerWaveWidth - 1 - pos
 			}
-			c := theme.Brand.Color(float64(pos) / float64(bannerWaveWidth-1))
+			c := theme.Brand.Tone.Color(0.6 + 0.4*float64(pos)/float64(bannerWaveWidth-1))
 			banner.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render(string(ch)))
 		}
 	}
 
-	subtitle := lipgloss.NewStyle().Italic(true).Foreground(theme.Pink).Render("your year in the terminal")
+	subtitle := lipgloss.NewStyle().Italic(true).Foreground(theme.Subtext).Render("your year in the terminal")
 
-	// A block bouncing back and forth
+	// A block bouncing back and forth like a comet, brightest at its head
 	const track, block = 24, 6
 	pos := frame % (2 * (track - block))
-	if pos > track-block {
+	movingRight := pos <= track-block
+	if !movingRight {
 		pos = 2*(track-block) - pos
 	}
-	bar := theme.Faint.Render("[") + strings.Repeat(" ", pos) +
-		theme.GradientText(strings.Repeat("=", block), theme.Brand, true) +
+	var comet strings.Builder
+	for i := 0; i < block; i++ {
+		t := float64(i+1) / block
+		if !movingRight {
+			t = float64(block-i) / block
+		}
+		comet.WriteString(lipgloss.NewStyle().Bold(true).Foreground(theme.Brand.Tone.Color(t)).Render("="))
+	}
+	bar := theme.Faint.Render("[") + strings.Repeat(" ", pos) + comet.String() +
 		strings.Repeat(" ", track-block-pos) + theme.Faint.Render("]")
 
 	message := loadingMessages[(frame/messageTicks)%len(loadingMessages)]

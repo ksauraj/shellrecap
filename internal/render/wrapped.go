@@ -37,11 +37,14 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 	n := func(v int) string { return formatInt(scale(v, anim.Progress)) }
 
 	var slides []types.Slide
+	// tone is the tonal range of the accent of the slide being built
+	tone := func() *theme.Tone {
+		return theme.Accents[len(slides)%len(theme.Accents)].Tone
+	}
 	// rows draws bars in the accent of the slide being built
 	rows := func(counts []analyzer.UsageCount, limit int) []string {
 		counts = analyzer.TopN(counts, limit)
-		accent := theme.Accents[len(slides)%len(theme.Accents)]
-		lines := countRows(counts, newBarLayout(inner-2, counts), accent.Gradient, anim)
+		lines := countRows(counts, newBarLayout(inner-2, counts), tone(), anim)
 		for i := range lines {
 			lines[i] = "  " + lines[i]
 		}
@@ -111,7 +114,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		slide := types.Slide{
 			Title:    "When You're in the Zone",
 			Headline: fmt.Sprintf("Peak hour: %02d:00", peak),
-			Lines:    hourChart(s.HourCounts, anim),
+			Lines:    hourChart(s.HourCounts, tone(), anim),
 			Art:      clockArt,
 		}
 		slide.Lines = append(slide.Lines, "",
@@ -132,7 +135,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		slide := types.Slide{
 			Title:    "Your Year in Motion",
 			Headline: fmt.Sprintf("Busiest month: %s", time.Month(busiestMonth+1)),
-			Lines:    monthChart(s.MonthCounts, anim),
+			Lines:    monthChart(s.MonthCounts, tone(), anim),
 			Art:      calendarArt,
 		}
 		slide.Lines = append(slide.Lines, "",

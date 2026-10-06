@@ -16,17 +16,14 @@ import (
 	"github.com/muesli/reflow/truncate"
 )
 
-// RenderTabs renders the tab bar, with the active tab on a gradient
+// RenderTabs renders the tab bar
 func RenderTabs(tabs []string, active int, width int) string {
 	var tabsDisplay strings.Builder
 
 	for i, tab := range tabs {
 		if i == active {
-			label := []rune(fmt.Sprintf(" %d %s ", i+1, tab))
-			for j, r := range label {
-				tabsDisplay.WriteString(lipgloss.NewStyle().Bold(true).Foreground(theme.Base).
-					Background(theme.Grape.Gradient.Color(float64(j) / float64(len(label)-1))).Render(string(r)))
-			}
+			tabsDisplay.WriteString(lipgloss.NewStyle().Bold(true).Foreground(theme.Base).
+				Background(theme.Brand.Color).Render(fmt.Sprintf(" %d %s ", i+1, tab)))
 			continue
 		}
 		tabsDisplay.WriteString(" " + theme.Faint.Render(strconv.Itoa(i+1)) + " " + theme.Dim.Render(tab) + " ")
@@ -83,7 +80,7 @@ func highlight(accent theme.Accent, text string) string {
 func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 	shells := analyzer.SortedShells(data)
 	if len(shells) == 0 {
-		return grid([]cardSpec{{title: "Overview", accent: theme.Grape, wide: true, body: func(int) []string {
+		return grid([]cardSpec{{title: "Overview", accent: theme.MauveAccent, wide: true, body: func(int) []string {
 			return faint("No shell history found (looked for bash, zsh and fish history files)")
 		}}}, width)
 	}
@@ -112,10 +109,10 @@ func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 	layout := newBarLayout(cardInner(halfCardWidth(width)), shellCounts, top)
 
 	return grid([]cardSpec{
-		{title: "Summary", accent: theme.Grape, body: func(int) []string {
+		{title: "Summary", accent: theme.MauveAccent, body: func(int) []string {
 			lines := []string{
-				stat("Total commands", highlight(theme.Grape, formatInt(scale(len(all), anim.Progress)))),
-				stat("Unique commands", highlight(theme.Grape, formatInt(scale(len(unique), anim.Progress)))),
+				stat("Total commands", highlight(theme.MauveAccent, formatInt(scale(len(all), anim.Progress)))),
+				stat("Unique commands", highlight(theme.MauveAccent, formatInt(scale(len(unique), anim.Progress)))),
 				stat("Shells", theme.Normal.Render(strings.Join(shells, ", "))),
 			}
 			if !first.IsZero() {
@@ -125,16 +122,16 @@ func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 			}
 			return lines
 		}},
-		{title: "Shells", accent: theme.Sunset, body: func(int) []string {
-			return countRows(shellCounts, layout, theme.Sunset.Gradient, anim)
+		{title: "Shells", accent: theme.RoseAccent, body: func(int) []string {
+			return countRows(shellCounts, layout, theme.RoseAccent.Tone, anim)
 		}},
-		{title: "Top Commands", accent: theme.Gold, body: func(int) []string {
+		{title: "Top Commands", accent: theme.SandAccent, body: func(int) []string {
 			if len(top) == 0 {
 				return faint("No commands found")
 			}
-			return countRows(top, layout, theme.Gold.Gradient, anim)
+			return countRows(top, layout, theme.SandAccent.Tone, anim)
 		}},
-		{title: "Shell Configuration", accent: theme.Mint, body: func(int) []string {
+		{title: "Shell Configuration", accent: theme.SageAccent, body: func(int) []string {
 			return configLines(data, shells)
 		}},
 	}, width)
@@ -150,7 +147,7 @@ func configLines(data analyzer.ShellData, shells []string) []string {
 		if len(lines) > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, highlight(theme.Mint, shell)+"  "+theme.Dim.Render(fmt.Sprintf("%d aliases · %d plugins · %d env vars",
+		lines = append(lines, highlight(theme.SageAccent, shell)+"  "+theme.Dim.Render(fmt.Sprintf("%d aliases · %d plugins · %d env vars",
 			len(config.Aliases), len(config.Plugins), len(config.Environment))))
 
 		if len(config.Plugins) > 0 {
@@ -179,7 +176,7 @@ func configLines(data analyzer.ShellData, shells []string) []string {
 				lines = append(lines, theme.Faint.Render(fmt.Sprintf("and %d more aliases", len(names)-3)))
 				break
 			}
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Lime).Render(alias)+
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Sage).Render(alias)+
 				theme.Faint.Render(" → ")+theme.Dim.Render(oneLine(config.Aliases[alias])))
 		}
 	}
@@ -194,10 +191,10 @@ func RenderTechProfile(profile analyzer.TechProfile, width int, anim Anim) strin
 	layout := newBarLayout(cardInner(halfCardWidth(width)), profile.SecondarySkills, profile.TopTech)
 
 	return grid([]cardSpec{
-		{title: "Profile", accent: theme.Grape, wide: true, body: func(int) []string {
+		{title: "Profile", accent: theme.MauveAccent, wide: true, body: func(int) []string {
 			role := theme.Faint.Render("Not enough data")
 			if profile.PrimaryRole != "" {
-				role = highlight(theme.Grape, profile.PrimaryRole)
+				role = highlight(theme.MauveAccent, profile.PrimaryRole)
 			}
 			languages := theme.Faint.Render("No language usage found")
 			if len(profile.TechStack) > 0 {
@@ -205,17 +202,17 @@ func RenderTechProfile(profile analyzer.TechProfile, width int, anim Anim) strin
 			}
 			return []string{stat("Primary role", role), stat("Languages", languages)}
 		}},
-		{title: "Skill Areas", accent: theme.Sunset, body: func(int) []string {
+		{title: "Skill Areas", accent: theme.RoseAccent, body: func(int) []string {
 			if len(profile.SecondarySkills) == 0 {
 				return faint("No skill data available")
 			}
-			return countRows(profile.SecondarySkills, layout, theme.Sunset.Gradient, anim)
+			return countRows(profile.SecondarySkills, layout, theme.RoseAccent.Tone, anim)
 		}},
-		{title: "Most Used Tech", accent: theme.Gold, body: func(int) []string {
+		{title: "Most Used Tech", accent: theme.SandAccent, body: func(int) []string {
 			if len(profile.TopTech) == 0 {
 				return faint("No tool usage data available")
 			}
-			return countRows(profile.TopTech, layout, theme.Gold.Gradient, anim)
+			return countRows(profile.TopTech, layout, theme.SandAccent.Tone, anim)
 		}},
 	}, width)
 }
@@ -223,18 +220,18 @@ func RenderTechProfile(profile analyzer.TechProfile, width int, anim Anim) strin
 // RenderWorkPatterns renders the work patterns tab
 func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, anim Anim) string {
 	return grid([]cardSpec{
-		{title: "Daily Activity", accent: theme.Grape, wide: true, body: func(int) []string {
+		{title: "Daily Activity", accent: theme.MauveAccent, wide: true, body: func(int) []string {
 			if len(patterns.PeakHours) == 0 {
 				return faint("Your history has no timestamps, so activity by hour isn't available")
 			}
 			var peaks []string
 			for _, hour := range patterns.PeakHours {
-				peaks = append(peaks, highlight(theme.Grape, fmt.Sprintf("%02d:00", hour)))
+				peaks = append(peaks, highlight(theme.MauveAccent, fmt.Sprintf("%02d:00", hour)))
 			}
 			lines := []string{stat("Peak hours", strings.Join(peaks, theme.Faint.Render(", "))), ""}
-			return append(lines, hourChart(patterns.HourlyActivity, anim)...)
+			return append(lines, hourChart(patterns.HourlyActivity, theme.MauveAccent.Tone, anim)...)
 		}},
-		{title: "Productivity", accent: theme.Sunset, body: func(inner int) []string {
+		{title: "Productivity", accent: theme.RoseAccent, body: func(inner int) []string {
 			metrics := make([]string, 0, len(patterns.Productivity))
 			for metric := range patterns.Productivity {
 				metrics = append(metrics, metric)
@@ -245,18 +242,18 @@ func RenderWorkPatterns(patterns analyzer.WorkPatterns, width int, anim Anim) st
 			for _, metric := range metrics {
 				value := patterns.Productivity[metric] * anim.Progress
 				lines = append(lines, theme.Normal.Render(fmt.Sprintf("%-19s", metric))+" "+
-					bar(int(value*1000), 1000, barWidth, theme.Sunset.Gradient, anim.Frame)+" "+
+					bar(int(value*1000), 1000, barWidth, theme.RoseAccent.Tone, anim.Frame)+" "+
 					theme.Dim.Render(fmt.Sprintf("%5.1f%%", value*100)))
 			}
 			return lines
 		}},
-		{title: "Common Workflows", accent: theme.Gold, body: func(int) []string {
+		{title: "Common Workflows", accent: theme.SandAccent, body: func(int) []string {
 			if len(patterns.CommonWorkflows) == 0 {
 				return faint("No recurring workflows found")
 			}
 			var lines []string
 			for _, workflow := range patterns.CommonWorkflows {
-				lines = append(lines, lipgloss.NewStyle().Foreground(theme.Amber).Render("•")+" "+theme.Normal.Render(workflow))
+				lines = append(lines, lipgloss.NewStyle().Foreground(theme.Sand).Render("•")+" "+theme.Normal.Render(workflow))
 			}
 			return lines
 		}},
@@ -270,10 +267,10 @@ func RenderToolUsage(usage analyzer.ToolUsage, width int, anim Anim) string {
 		counts []analyzer.UsageCount
 		empty  string
 	}{
-		{"Editors", theme.Grape, analyzer.TopN(analyzer.SortedCounts(usage.Editors), 8), "No editor usage found"},
-		{"Programming Languages", theme.Sunset, analyzer.TopN(analyzer.SortedCounts(usage.Languages), 8), "No language usage found"},
-		{"Build Tools", theme.Gold, analyzer.TopN(analyzer.SortedCounts(usage.BuildTools), 8), "No build tool usage found"},
-		{"DevOps & Cloud", theme.Mint, analyzer.TopN(analyzer.SortedCounts(usage.DevOps), 8), "No DevOps tool usage found"},
+		{"Editors", theme.MauveAccent, analyzer.TopN(analyzer.SortedCounts(usage.Editors), 8), "No editor usage found"},
+		{"Programming Languages", theme.RoseAccent, analyzer.TopN(analyzer.SortedCounts(usage.Languages), 8), "No language usage found"},
+		{"Build Tools", theme.SandAccent, analyzer.TopN(analyzer.SortedCounts(usage.BuildTools), 8), "No build tool usage found"},
+		{"DevOps & Cloud", theme.SageAccent, analyzer.TopN(analyzer.SortedCounts(usage.DevOps), 8), "No DevOps tool usage found"},
 	}
 
 	// One layout for all four cards, so their bars share a grid
@@ -290,7 +287,7 @@ func RenderToolUsage(usage analyzer.ToolUsage, width int, anim Anim) string {
 			if len(s.counts) == 0 {
 				return faint(s.empty)
 			}
-			return countRows(s.counts, layout, s.accent.Gradient, anim)
+			return countRows(s.counts, layout, s.accent.Tone, anim)
 		}})
 	}
 	return grid(specs, width)
@@ -298,7 +295,7 @@ func RenderToolUsage(usage analyzer.ToolUsage, width int, anim Anim) string {
 
 // RenderTimeline renders the timeline, revealing entries one by one
 func RenderTimeline(entries []types.TimelineEntry, width int, anim Anim) string {
-	return grid([]cardSpec{{title: "Recent Interesting Commands", accent: theme.Mint, wide: true, body: func(int) []string {
+	return grid([]cardSpec{{title: "Recent Interesting Commands", accent: theme.SageAccent, wide: true, body: func(int) []string {
 		if len(entries) == 0 {
 			return faint("No interesting commands found")
 		}
@@ -310,7 +307,7 @@ func RenderTimeline(entries []types.TimelineEntry, width int, anim Anim) string 
 				when = entry.Timestamp.Format("2006-01-02 15:04")
 			}
 			lines[i] = theme.Faint.Render(when) + "  " +
-				lipgloss.NewStyle().Foreground(theme.Lime).Render(fmt.Sprintf("%-4s", entry.Shell)) + "  " +
+				lipgloss.NewStyle().Foreground(theme.Sage).Render(fmt.Sprintf("%-4s", entry.Shell)) + "  " +
 				theme.Normal.Render(oneLine(entry.Command))
 		}
 		return lines

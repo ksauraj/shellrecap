@@ -144,9 +144,9 @@ func newBarLayout(inner int, lists ...[]analyzer.UsageCount) barLayout {
 	return l
 }
 
-// countRows renders "name ▄▄▄▄▄▄ count" rows, scaled to the largest count.
+// countRows renders "name ■■■■■■ count" rows, scaled to the largest count.
 // Bars and counts grow with the reveal animation.
-func countRows(counts []analyzer.UsageCount, l barLayout, g *theme.Gradient, anim Anim) []string {
+func countRows(counts []analyzer.UsageCount, l barLayout, tone *theme.Tone, anim Anim) []string {
 	max := 0
 	for _, c := range counts {
 		max = maxInt(max, c.Count)
@@ -155,7 +155,7 @@ func countRows(counts []analyzer.UsageCount, l barLayout, g *theme.Gradient, ani
 	for _, c := range counts {
 		name := fit(c.Name, l.nameWidth)
 		lines = append(lines, theme.Normal.Render(name)+strings.Repeat(" ", l.nameWidth-lipgloss.Width(name))+" "+
-			bar(scale(c.Count, anim.Progress), max, l.barWidth, g, anim.Frame)+" "+
+			bar(scale(c.Count, anim.Progress), max, l.barWidth, tone, anim.Frame)+" "+
 			theme.Dim.Render(fmt.Sprintf("%*s", l.countWidth, formatInt(scale(c.Count, anim.Progress)))))
 	}
 	return lines
@@ -164,6 +164,8 @@ func countRows(counts []analyzer.UsageCount, l barLayout, g *theme.Gradient, ani
 const (
 	// glareWidth is how many cells the glare spreads over on each side
 	glareWidth = 3.0
+	// glareStrength is how far the glare lightens a cell at its center
+	glareStrength = 0.45
 	// glarePeriod is the number of ticks between glare sweeps
 	glarePeriod = 45
 	glareSpeed  = 2.5 // cells per tick
@@ -181,37 +183,32 @@ func glare(x, frame int) float64 {
 	return 1 - d/glareWidth
 }
 
-// bar draws a half-height bar filled along the gradient, with half-cell
-// precision and a sweeping glare
-func bar(value, max, width int, g *theme.Gradient, frame int) string {
+// bar draws a segmented bar in a single color, going from a dark shade on
+// the left to a light tint on the right, with a sweeping glare
+func bar(value, max, width int, tone *theme.Tone, frame int) string {
 	if max <= 0 || width <= 0 {
 		return ""
 	}
-	halves := int(math.Round(float64(value) / float64(max) * float64(width*2)))
-	if value > 0 && halves == 0 {
-		halves = 1
+	cells := int(math.Round(float64(value) / float64(max) * float64(width)))
+	if value > 0 && cells == 0 {
+		cells = 1
 	}
-	halves = minInt(halves, width*2)
+	cells = minInt(cells, width)
 
 	var b strings.Builder
-	cells := (halves + 1) / 2
 	for i := 0; i < cells; i++ {
-		c := g.At(float64(i) / float64(maxInt(width-1, 1)))
-		block := "▄"
-		if i == cells-1 && halves%2 == 1 {
-			block = "▖" // half a cell
-		}
-		b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(c, glare(i, frame)*0.75)).Render(block))
+		c := tone.At(float64(i) / float64(maxInt(width-1, 1)))
+		b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(c, glare(i, frame)*glareStrength)).Render("■"))
 	}
-	b.WriteString(theme.Track.Render(strings.Repeat("▄", width-cells)))
+	b.WriteString(theme.Track.Render(strings.Repeat("■", width-cells)))
 	return b.String()
 }
 
 var chartBlocks = []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 
-// columnChart draws counts as vertical bars, height rows tall, colored
-// along the brand gradient with the same sweeping glare as the bars
-func columnChart(counts []int, colWidth, gap, height int, anim Anim) []string {
+// columnChart draws counts as vertical bars, height rows tall, in a single
+// color that gets lighter towards the top, with the same glare as the bars
+func columnChart(counts []int, colWidth, gap, height int, tone *theme.Tone, anim Anim) []string {
 	max := 0
 	for _, c := range counts {
 		max = maxInt(max, c)
@@ -237,8 +234,8 @@ func columnChart(counts []int, colWidth, gap, height int, anim Anim) []string {
 			if fill > 8 {
 				fill = 8
 			}
-			col := theme.Brand.At(float64(i) / float64(maxInt(len(counts)-1, 1)))
-			shine := glare(i*(colWidth+gap), anim.Frame) * 0.75
+			col := tone.At(float64(rowFromBottom+1) / float64(height))
+			shine := glare(i*(colWidth+gap), anim.Frame) * glareStrength
 			b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(col, shine)).
 				Render(strings.Repeat(chartBlocks[fill], colWidth)))
 			if i < len(counts)-1 {
@@ -251,8 +248,8 @@ func columnChart(counts []int, colWidth, gap, height int, anim Anim) []string {
 }
 
 // hourChart draws activity per hour of day with an hour axis underneath
-func hourChart(counts [24]int, anim Anim) []string {
-	rows := columnChart(counts[:], 2, 0, 3, anim)
+func hourChart(counts [24]int, tone *theme.Tone, anim Anim) []string {
+	rows := columnChart(counts[:], 2, 0, 3, tone, anim)
 
 	axis := []byte(strings.Repeat(" ", 48))
 	for _, h := range []int{0, 6, 12, 18} {
@@ -263,8 +260,8 @@ func hourChart(counts [24]int, anim Anim) []string {
 }
 
 // monthChart draws activity per month with month names underneath
-func monthChart(counts [12]int, anim Anim) []string {
-	rows := columnChart(counts[:], 3, 1, 3, anim)
+func monthChart(counts [12]int, tone *theme.Tone, anim Anim) []string {
+	rows := columnChart(counts[:], 3, 1, 3, tone, anim)
 
 	var labels []string
 	for m := time.January; m <= time.December; m++ {

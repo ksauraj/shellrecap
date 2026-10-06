@@ -515,8 +515,8 @@ func (m Model) View() string {
 
 	// Header with title and version
 	header := lipgloss.NewStyle().Padding(0, 1).Render(
-		lipgloss.NewStyle().Bold(true).Foreground(theme.Orange).Render(">_") + " " +
-			theme.GradientText("shellrecap", theme.Brand, true) + " " +
+		lipgloss.NewStyle().Bold(true).Foreground(theme.Brand.Tone.Color(0.3)).Render(">_") + " " +
+			lipgloss.NewStyle().Bold(true).Foreground(theme.Brand.Color).Render("shellrecap") + " " +
 			theme.Faint.Render(appVersion))
 
 	// Render tabs
