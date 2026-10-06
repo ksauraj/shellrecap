@@ -45,8 +45,11 @@ Download the latest release for your platform:
 ### Quick Install Script
 
 #### Linux/macOS (One-line installer)
+
+Downloads the right binary for your system into the current directory and starts it.
+
 ```bash
-curl -L https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.sh | bash
 ```
 
 #### Using wget

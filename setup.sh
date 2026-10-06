@@ -1,54 +1,83 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Downloads the latest shellrecap release for this machine and starts it:
+#
+#   curl -fsSL https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.sh | bash
+#
+# Only uses tools that behave the same on macOS (bash 3.2, BSD utilities)
+# and Linux.
+set -eu
 
-# Function to fetch the download URL for the latest release
-fetch_download_url() {
-  local os=$(uname -s | tr '[:upper:]' '[:lower:]')
-  local arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/; s/armv7l/arm/') # Map common architectures
+repo="ksauraj/shellrecap"
+binary="shellrecap"
 
-  # Debug output to stderr
-  echo "Detected OS: $os, Architecture: $arch" >&2
-
-  # Fetch the latest release JSON and extract the download URL
-  local url=$(curl -s https://api.github.com/repos/ksauraj/shellrecap/releases/latest | grep -oP '"browser_download_url": "\K[^"]+' | grep "$os" | grep -E "$arch|armv7l|aarch64")
-
-  if [[ -z "$url" ]]; then
-    echo "Error: No binary found for OS: $os, Architecture: $arch." >&2
-    exit 1
-  fi
-
-  # Sanitize the URL by removing any trailing whitespace or special characters
-  url=$(echo "$url" | tr -d '\r')
-
-  # Debug output to stderr
-  echo "Download URL: $url" >&2
-
-  # Return the URL to stdout
-  echo "$url"
-}
-
-# Function to download and run the binary
-download_and_run() {
-  local url=$1
-  local binary_name="shellrecap"
-
-  echo "Downloading binary from URL: $url" >&2
-  if ! curl -L -o "$binary_name" "$url"; then
-    echo "Error: Failed to download the binary. Please check your internet connection and try again." >&2
-    exit 1
-  fi
-
-  echo "Making the binary executable..." >&2
-  chmod +x "$binary_name"
-
-  echo "Running the binary..." >&2
-  ./"$binary_name"
-}
-
-# Main script execution
-download_url=$(fetch_download_url)
-if [[ -n "$download_url" ]]; then
-  download_and_run "$download_url"
-else
-  echo "Error: Unable to fetch download URL." >&2
+fail() {
+  echo "Error: $*" >&2
   exit 1
+}
+
+detect_os() {
+  case "$(uname -s)" in
+    Darwin) echo darwin ;;
+    Linux)
+      if [ "$(uname -o 2>/dev/null)" = "Android" ]; then
+        echo android
+      else
+        echo linux
+      fi
+      ;;
+    FreeBSD) echo freebsd ;;
+    OpenBSD) echo openbsd ;;
+    MINGW* | MSYS* | CYGWIN*)
+      fail "on Windows, download $binary-windows-amd64.exe from https://github.com/$repo/releases/latest"
+      ;;
+    *) fail "unsupported operating system: $(uname -s)" ;;
+  esac
+}
+
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64 | amd64)
+      # A shell running under Rosetta reports x86_64 on Apple silicon
+      if [ "$(uname -s)" = "Darwin" ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+        echo arm64
+      else
+        echo amd64
+      fi
+      ;;
+    arm64 | aarch64) echo arm64 ;;
+    armv6* | armv7* | arm) echo arm ;;
+    *) fail "unsupported architecture: $(uname -m)" ;;
+  esac
+}
+
+os=$(detect_os)
+arch=$(detect_arch)
+url="https://github.com/$repo/releases/latest/download/$binary-$os-$arch"
+
+echo "Downloading $binary for $os/$arch..." >&2
+download="$binary.download"
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL -o "$download" "$url" || fail "couldn't download $url"
+elif command -v wget >/dev/null 2>&1; then
+  wget -q -O "$download" "$url" || fail "couldn't download $url"
+else
+  fail "curl or wget is needed to download $binary"
+fi
+mv "$download" "$binary"
+chmod +x "$binary"
+
+# Files downloaded through a browser are quarantined on macOS
+if [ "$os" = "darwin" ] && command -v xattr >/dev/null 2>&1; then
+  xattr -d com.apple.quarantine "$binary" 2>/dev/null || true
+fi
+echo "Downloaded ./$binary" >&2
+
+# When this script is piped into bash, its stdin is the script itself, so
+# hand the terminal to the app or it can't read the keyboard
+if [ -t 0 ]; then
+  exec "./$binary"
+elif (exec </dev/tty) 2>/dev/null; then
+  exec "./$binary" </dev/tty
+else
+  echo "Run ./$binary to start it." >&2
 fi
