@@ -477,8 +477,18 @@ func ago(t time.Time) string {
 	}
 }
 
-// cleanAIText strips markdown and emoji the model may add despite the prompt
+// typography maps the curly quotes, dashes and special spaces models like
+// to use to plain ASCII
+var typography = strings.NewReplacer(
+	"\u2018", "'", "\u2019", "'", "\u201c", `"`, "\u201d", `"`,
+	"\u2010", "-", "\u2011", "-", "\u2013", "-", "\u2014", " - ",
+	"\u2026", "...", "\u00a0", " ", "\u202f", " ",
+)
+
+// cleanAIText strips markdown, emoji and fancy typography the model may add
+// despite the prompt
 func cleanAIText(text string) string {
+	text = typography.Replace(text)
 	text = strings.ReplaceAll(text, "**", "")
 	text = strings.ReplaceAll(text, "*", "")
 	text = strings.Map(func(r rune) rune {

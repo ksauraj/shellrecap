@@ -444,9 +444,11 @@ func (s WrappedStats) Summary() string {
 		fmt.Fprintf(&b, "Programs first used this year: %s\n", formatCounts(s.NewPrograms))
 	}
 	if s.HasTimes {
-		fmt.Fprintf(&b, "Busiest hour: %02d:00, busiest weekday: %s, active days: %d, longest daily streak: %d days\n",
-			s.BusiestHour(), s.BusiestWeekday(), s.ActiveDays, s.LongestStreak)
-		fmt.Fprintf(&b, "Commands per hour of day (0-23): %v\n", s.HourCounts)
+		peak := s.BusiestHour()
+		fmt.Fprintf(&b, "Busiest hour: %02d:00 (%s), busiest weekday: %s\n", peak, partOfDay(peak), s.BusiestWeekday())
+		// Spelled out, because models misread raw hourly counts
+		fmt.Fprintf(&b, "Share of commands by time of day: %s\n", s.timeOfDayShares())
+		fmt.Fprintf(&b, "Active days: %d, longest streak of consecutive active days: %d\n", s.ActiveDays, s.LongestStreak)
 	}
 	fmt.Fprintf(&b, "sudo commands: %d, commands with pipes: %d, longest command: %d characters\n",
 		s.SudoCommands, s.PipeCommands, s.LongestCommand)
@@ -458,9 +460,46 @@ func (s WrappedStats) Summary() string {
 		}
 		fmt.Fprintf(&b, "Typos (%d total): %s\n", s.TotalTypos, strings.Join(typos, ", "))
 	}
-	persona, _ := s.Persona()
-	fmt.Fprintf(&b, "Heuristic persona: %s\n", persona)
 	return b.String()
+}
+
+// timeOfDay splits the day into named parts, as [from, to) hours
+var timeOfDay = []struct {
+	name     string
+	from, to int
+}{
+	{"morning (05-12)", 5, 12},
+	{"afternoon (12-17)", 12, 17},
+	{"evening (17-22)", 17, 22},
+	{"night (22-05)", 22, 29},
+}
+
+func partOfDay(hour int) string {
+	for _, part := range timeOfDay {
+		if (hour >= part.from && hour < part.to) || (hour+24 >= part.from && hour+24 < part.to) {
+			return strings.Fields(part.name)[0]
+		}
+	}
+	return ""
+}
+
+func (s WrappedStats) timeOfDayShares() string {
+	var parts []string
+	for _, part := range timeOfDay {
+		count := 0
+		for h := part.from; h < part.to; h++ {
+			count += s.HourCounts[h%24]
+		}
+		parts = append(parts, fmt.Sprintf("%s %d%%", part.name, count*100/maxInt(s.TotalCommands, 1)))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func formatCounts(counts []UsageCount) string {

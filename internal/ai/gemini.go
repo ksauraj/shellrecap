@@ -51,8 +51,10 @@ func (geminiProvider) key() string {
 	return os.Getenv("GEMINI_API_KEY")
 }
 
-func (geminiProvider) defaultModel() string {
-	return "gemini-3.8-flash"
+// defaultModels prefers the latest Flash model and falls back to
+// Flash-Lite, which has more free capacity when Flash is overloaded
+func (geminiProvider) defaultModels() []string {
+	return []string{"gemini-3.8-flash", "gemini-3.5-flash-lite"}
 }
 
 func (g geminiProvider) generate(model, system, user string) (string, error) {

@@ -36,9 +36,11 @@ func (groqProvider) key() string {
 	return os.Getenv("GROQ_API_KEY")
 }
 
-// defaultModel is the most capable production model on Groq's free plan
-func (groqProvider) defaultModel() string {
-	return "openai/gpt-oss-120b"
+// defaultModels prefers Qwen, which writes the most personal slides of the
+// free plan's models, and falls back to gpt-oss-120b, the most capable
+// production model, since Qwen is only a preview model
+func (groqProvider) defaultModels() []string {
+	return []string{"qwen/qwen3.8-27b", "openai/gpt-oss-120b"}
 }
 
 func (g groqProvider) generate(model, system, user string) (string, error) {

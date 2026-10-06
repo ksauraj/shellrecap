@@ -98,13 +98,13 @@ The Recap view is computed locally from your history. With an API key it also ge
 AI-written slides (persona, roast, superpower and forecast). Only aggregate stats such as program
 names and counts are sent, never full command lines.
 
-shellrecap asks **Gemini** first and falls back to **Groq** if Gemini fails or has no key. Both
-work on their free tiers.
+shellrecap asks **Gemini** first and falls back to **Groq** if Gemini fails or has no key. Each
+provider has a backup model for when its preferred one is overloaded. Both work on their free tiers.
 
-| Provider | Default model         | Free tier limits (per account)                                  |
-|----------|-----------------------|-----------------------------------------------------------------|
-| Gemini   | `gemini-3.8-flash`    | See [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) |
-| Groq     | `openai/gpt-oss-120b` | 30 requests/min, 1,000 requests/day, 8K tokens/min, 200K tokens/day |
+| Provider | Models, in order                                | Free tier limits (per account)                         |
+|----------|-------------------------------------------------|--------------------------------------------------------|
+| Gemini   | `gemini-3.8-flash`, then `gemini-3.5-flash-lite` | See [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) |
+| Groq     | `qwen/qwen3.8-27b`, then `openai/gpt-oss-120b`   | 30 requests/min, 1,000 requests/day, 8K tokens/min, 200K tokens/day |
 
 | Variable               | Description                                                      |
 |------------------------|------------------------------------------------------------------|

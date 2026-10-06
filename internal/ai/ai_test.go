@@ -103,11 +103,11 @@ func TestFallsBackToGroq(t *testing.T) {
 	var geminiCalls, groqCalls int
 	fakeGemini(t, http.StatusServiceUnavailable, "", &geminiCalls)
 	fakeGroq(t, http.StatusOK, func(payload map[string]interface{}) {
-		if payload["model"] != "openai/gpt-oss-120b" {
-			t.Errorf("model = %v, want the free tier default", payload["model"])
+		if payload["model"] != "qwen/qwen3.8-27b" {
+			t.Errorf("model = %v, want Groq's preferred model", payload["model"])
 		}
-		if payload["reasoning_effort"] != "low" {
-			t.Errorf("reasoning_effort = %v, want low for gpt-oss", payload["reasoning_effort"])
+		if _, ok := payload["reasoning_effort"]; ok {
+			t.Error("reasoning_effort sent to Qwen")
 		}
 		format, _ := payload["response_format"].(map[string]interface{})
 		schema, _ := format["json_schema"].(map[string]interface{})
@@ -123,8 +123,42 @@ func TestFallsBackToGroq(t *testing.T) {
 	if result.Target.Provider != Groq {
 		t.Errorf("target = %+v, want the Groq fallback", result.Target)
 	}
-	if len(result.Failures) != 1 || !strings.Contains(result.Failures[0].Error(), "high demand") {
-		t.Errorf("failures = %v, want Gemini's error", result.Failures)
+	// Both Gemini models are tried before Groq
+	if geminiCalls != 2 || len(result.Failures) != 2 || !strings.Contains(result.Failures[0].Error(), "high demand") {
+		t.Errorf("gemini calls = %d, failures = %v; want both Gemini models to fail first", geminiCalls, result.Failures)
+	}
+}
+
+func TestGroqBackupModel(t *testing.T) {
+	withKeys(t, "", "groq-key")
+	var models []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&payload)
+		model, _ := payload["model"].(string)
+		models = append(models, model)
+		if model == "qwen/qwen3.8-27b" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":{"message":"The model qwen/qwen3.8-27b has been decommissioned"}}`))
+			return
+		}
+		if payload["reasoning_effort"] != "low" {
+			t.Errorf("reasoning_effort = %v, want low for gpt-oss", payload["reasoning_effort"])
+		}
+		quoted, _ := json.Marshal(slidesJSON)
+		w.Write([]byte(`{"choices":[{"message":{"content":` + string(quoted) + `}}]}`))
+	}))
+	defer server.Close()
+	old := groqAPIURL
+	groqAPIURL = server.URL
+	defer func() { groqAPIURL = old }()
+
+	result, err := Generate("x", Options{Provider: Groq})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Target.Model != "openai/gpt-oss-120b" || strings.Join(models, ",") != "qwen/qwen3.8-27b,openai/gpt-oss-120b" {
+		t.Errorf("target = %+v after trying %v, want the gpt-oss backup", result.Target, models)
 	}
 }
 
@@ -190,8 +224,14 @@ func TestModelFromEnvironment(t *testing.T) {
 	withKeys(t, "", "")
 	t.Setenv("GROQ_MODEL", "openai/gpt-oss-20b")
 	targets := Targets(Options{})
-	if targets[0] != (Target{Gemini, "gemini-3.8-flash"}) || targets[1] != (Target{Groq, "openai/gpt-oss-20b"}) {
-		t.Errorf("targets = %+v", targets)
+	want := []Target{{Gemini, "gemini-3.8-flash"}, {Gemini, "gemini-3.5-flash-lite"}, {Groq, "openai/gpt-oss-20b"}}
+	if len(targets) != len(want) {
+		t.Fatalf("targets = %+v, want %+v", targets, want)
+	}
+	for i := range want {
+		if targets[i] != want[i] {
+			t.Errorf("targets = %+v, want %+v", targets, want)
+		}
 	}
 }
 

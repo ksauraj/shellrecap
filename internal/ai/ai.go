@@ -53,7 +53,9 @@ var displayNames = map[string]string{Gemini: "Gemini", Groq: "Groq"}
 type provider interface {
 	// key returns the API key, or "" when none is configured
 	key() string
-	defaultModel() string
+	// defaultModels are tried in order: the preferred model first, then a
+	// backup for when it's overloaded or withdrawn
+	defaultModels() []string
 	generate(model, system, user string) (string, error)
 }
 
@@ -65,26 +67,29 @@ var providers = map[string]provider{
 // ErrNoAPIKey is returned when none of the providers to try has an API key
 var ErrNoAPIKey = errors.New("no AI provider API key configured")
 
-// requestTimeout bounds each provider, so a hanging one doesn't hold up
-// the fallback for long
-const requestTimeout = 40 * time.Second
+// requestTimeout bounds each attempt, so an overloaded model that is slow
+// to fail doesn't hold up the fallback for long
+const requestTimeout = 15 * time.Second
 
-// Targets lists the providers and models to try, in order
+// Targets lists the providers and models to try, in order. A model chosen
+// with --model or GEMINI_MODEL / GROQ_MODEL replaces the provider's defaults.
 func Targets(opts Options) []Target {
 	names := []string{Gemini, Groq}
 	if opts.Provider != "" && opts.Provider != Auto {
 		names = []string{opts.Provider}
 	}
-	targets := make([]Target, 0, len(names))
+	var targets []Target
 	for _, name := range names {
-		model := opts.Model
-		if model == "" {
-			model = os.Getenv(strings.ToUpper(name) + "_MODEL")
+		models := providers[name].defaultModels()
+		if model := os.Getenv(strings.ToUpper(name) + "_MODEL"); model != "" {
+			models = []string{model}
 		}
-		if model == "" {
-			model = providers[name].defaultModel()
+		if opts.Model != "" {
+			models = []string{opts.Model}
 		}
-		targets = append(targets, Target{Provider: name, Model: model})
+		for _, model := range models {
+			targets = append(targets, Target{Provider: name, Model: model})
+		}
 	}
 	return targets
 }
@@ -154,7 +159,7 @@ func Generate(summary string, opts Options) (Result, error) {
 			sections, err = parseSections(text)
 		}
 		if err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", displayNames[target.Provider], err))
+			failures = append(failures, fmt.Errorf("%s failed: %w", target, err))
 			continue
 		}
 		return Result{Target: target, Sections: sections, Duration: time.Since(start), Failures: failures}, nil
@@ -169,21 +174,30 @@ func Generate(summary string, opts Options) (Result, error) {
 	return Result{}, errors.New(strings.Join(msgs, "; "))
 }
 
-const systemPrompt = `You write the AI slides of shellrecap, a Spotify-Wrapped-style recap of a developer's year in the terminal. The slides are shown in a terminal UI, so keep them short and punchy.
+const systemPrompt = `You write the AI slides of shellrecap, a Spotify-Wrapped-style recap of a developer's year in the terminal, shown in a terminal UI.
 
 Write exactly 4 slides, in this order:
-1. Persona: invent a creative terminal persona title for them (2-4 words) and justify it with their stats.
-2. Roast: a good-natured roast of their habits (typos, clear, sudo, late nights, favourite commands).
-3. Superpower: what they are clearly great at, and the evidence for it.
+1. Persona: an original, specific persona title (2-4 words) that only this person could get, and why it fits.
+2. Roast: a good-natured roast of their habits.
+3. Superpower: what they are clearly great at, with the evidence.
 4. Forecast: playful predictions for their next year in the terminal.
 
-Rules:
-- Only use numbers that appear in the stats. Never invent numbers, dates or tools.
+Make it feel personal:
+- Every slide must mention at least two concrete details from the stats: program names, git subcommands, the actual typos, newly adopted tools, the busiest hour or weekday.
+- The humour is dry and clever, like a witty friend reading over their shoulder. Wordplay on real command names works well.
+- Avoid cliches and generic lines that could apply to anyone: no "captain", "wizard", "ninja" or "ship" metaphors, no motivational filler.
+
+Stay accurate:
+- Only use numbers that appear in the stats, and never invent numbers, dates or tools.
+- The forecast is qualitative: predict habits and tools, not counts.
+- Read the time-of-day shares literally: someone is only a night owl or early bird if that share is large.
+
+Format:
 - Speak directly to the user as "you".
-- title: at most 40 characters.
-- description: 1-3 sentences, at most 280 characters.
-- quotes: 1-2 witty one-liners per slide, each at most 90 characters, not attributed to anyone.
-- Plain ASCII text only: no emoji, no markdown, no asterisks, no hashtags.
+- title: at most 40 characters, without a label like "Roast:" or "Forecast:".
+- description: 1-2 sentences, at most 240 characters. Keep it tight.
+- quotes: 1-2 one-liners per slide, each at most 90 characters, not attributed to anyone.
+- Plain ASCII only: straight quotes and hyphens, no emoji, no markdown.
 
 Respond with JSON only, in this shape:
 {"sections": [{"title": "...", "description": "...", "quotes": ["..."]}]}`
