@@ -83,10 +83,8 @@ type Model struct {
 	noCache             bool
 	aiSections          []ai.Section
 	aiStatus            aiStatus
-	aiErr               error
 	aiTarget            ai.Target     // who wrote the AI slides
 	aiDuration          time.Duration // how long they took to write
-	aiFailures          []error       // providers that failed before aiTarget
 	aiCreatedAt         time.Time
 	aiFromCache         bool
 	aiRequestID         int
@@ -216,7 +214,7 @@ func (m *Model) scheduleSlideTick() tea.Cmd {
 func (m *Model) loadAISlides(force bool) tea.Cmd {
 	summary := m.wrappedStats.Summary()
 	commands := m.wrappedStats.TotalCommands
-	m.aiSections, m.aiErr, m.aiFailures = nil, nil, nil
+	m.aiSections = nil
 
 	if !force && !m.noCache {
 		// Same order as the requests: Gemini's slides first, then Groq's
@@ -362,7 +360,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.logger.Printf("Error generating AI slides: %v", msg.err)
-			m.aiErr = msg.err
 			if entry, ok := m.anyCachedAISlides(); ok {
 				m.useCachedAISlides(entry)
 			} else {
@@ -378,7 +375,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.logger.Printf("Generated %d AI slides with %s in %s", len(result.Sections), result.Target, result.Duration)
 		m.aiStatus, m.aiSections, m.aiFromCache = aiDone, result.Sections, false
-		m.aiTarget, m.aiDuration, m.aiFailures, m.aiCreatedAt = result.Target, result.Duration, result.Failures, time.Now()
+		m.aiTarget, m.aiDuration, m.aiCreatedAt = result.Target, result.Duration, time.Now()
 		m.syncContent()
 		return m, saveAISlides(cache.WrappedEntry{
 			Year:      m.wrappedYear,
@@ -424,20 +421,17 @@ func (m Model) slides() []types.Slide {
 	case aiDisabled:
 		last.Footer = ai.KeyHint(m.aiOpts)
 	case aiFailed:
-		last.Footer = "AI slides unavailable: " + m.aiErr.Error()
+		// The details go to the log, never on screen
+		last.Footer = "AI slides are unavailable right now. Press r to try again."
 	}
 
+	// Which model wrote the slides, never why other models didn't
 	footer := fmt.Sprintf("Written by %s in %.1fs.", m.aiTarget, m.aiDuration.Seconds())
-	if len(m.aiFailures) > 0 {
-		footer = fmt.Sprintf("Written by %s in %.1fs, after %v", m.aiTarget, m.aiDuration.Seconds(), m.aiFailures[0])
-	}
 	switch {
-	case m.aiFromCache && m.aiErr != nil:
-		footer = fmt.Sprintf("Couldn't regenerate (%v), showing slides %s wrote %s.", m.aiErr, m.aiTarget, ago(m.aiCreatedAt))
 	case m.aiFromCache && ai.AnyAvailable(m.aiOpts):
-		footer = fmt.Sprintf("Cached from %s · %s · r: regenerate", ago(m.aiCreatedAt), m.aiTarget)
+		footer = fmt.Sprintf("Written by %s %s · r: regenerate", m.aiTarget, ago(m.aiCreatedAt))
 	case m.aiFromCache:
-		footer = fmt.Sprintf("Cached from %s · %s", ago(m.aiCreatedAt), m.aiTarget)
+		footer = fmt.Sprintf("Written by %s %s.", m.aiTarget, ago(m.aiCreatedAt))
 	}
 
 	for _, section := range m.aiSections {

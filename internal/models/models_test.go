@@ -168,7 +168,7 @@ func TestAIResultIsCachedAndReused(t *testing.T) {
 		t.Errorf("status = %v, fromCache = %v, requests = %d; want cached slides and no request",
 			next.aiStatus, next.aiFromCache, next.aiRequestID)
 	}
-	if view := lastSlide(t, next); !strings.Contains(view, "Cached from just now · Gemini (test-model) · r: regenerate") {
+	if view := lastSlide(t, next); !strings.Contains(view, "Written by Gemini (test-model) just now · r: regenerate") {
 		t.Errorf("cached slide doesn't say it's cached:\n%s", view)
 	}
 }
@@ -221,19 +221,26 @@ func TestAIErrorFallsBackToCache(t *testing.T) {
 
 	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, err: errors.New("quota exceeded")})
 	view := lastSlide(t, m)
-	for _, want := range []string{"Cached Wrangler", "quota exceeded", "hours ago"} {
+	for _, want := range []string{"Cached Wrangler", "Written by Gemini (test-model) 3 hours ago"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("fallback slide is missing %q:\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "quota exceeded") {
+		t.Errorf("the API error is shown on screen:\n%s", view)
 	}
 }
 
 func TestWrappedShowsAIError(t *testing.T) {
 	m := testModel(t, "fake-key")
-	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, err: errors.New("quota exceeded")})
+	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, err: errors.New("gemini API error (HTTP 503): quota exceeded")})
 
-	if view := lastSlide(t, m); !strings.Contains(view, "quota exceeded") {
-		t.Errorf("AI error isn't shown:\n%s", view)
+	view := lastSlide(t, m)
+	if !strings.Contains(view, "AI slides are unavailable right now. Press r to try again.") {
+		t.Errorf("failure isn't explained:\n%s", view)
+	}
+	if strings.Contains(view, "quota exceeded") || strings.Contains(view, "HTTP") {
+		t.Errorf("the API error is shown on screen:\n%s", view)
 	}
 }
 
@@ -378,16 +385,21 @@ func TestRecapSlidesStartTopLeft(t *testing.T) {
 	}
 }
 
-func TestGroqFallbackIsShown(t *testing.T) {
+func TestFallbackHidesErrors(t *testing.T) {
 	m := testModelWith(t, Config{}, "gemini-key", "groq-key")
 	result := aiResult(groqTarget, ai.Section{Title: "Fast Fallback"})
-	result.Failures = []error{errors.New("Gemini: gemini API error (HTTP 503): high demand")}
+	result.Failures = []error{errors.New("Gemini (gemini-3.8-flash) failed: gemini API error (HTTP 503): high demand")}
 	m = update(t, m, aiWrappedMsg{id: m.aiRequestID, result: result})
 
 	view := plain(lastSlide(t, m))
-	for _, want := range []string{"Fast Fallback", "Written by Groq (openai/gpt-oss-120b) in 1.5s", "after Gemini"} {
+	for _, want := range []string{"Fast Fallback", "Written by Groq (openai/gpt-oss-120b) in 1.5s."} {
 		if !strings.Contains(view, want) {
 			t.Errorf("fallback slide is missing %q:\n%s", want, view)
+		}
+	}
+	for _, leak := range []string{"HTTP", "503", "high demand", "failed"} {
+		if strings.Contains(view, leak) {
+			t.Errorf("the fallback's error leaks onto the slide (%q):\n%s", leak, view)
 		}
 	}
 }
