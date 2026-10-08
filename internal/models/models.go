@@ -14,6 +14,7 @@ import (
 	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/cache"
+	"github.com/ksauraj/shellrecap/internal/config"
 	"github.com/ksauraj/shellrecap/internal/render"
 	"github.com/ksauraj/shellrecap/internal/theme"
 	"github.com/ksauraj/shellrecap/internal/types"
@@ -56,6 +57,8 @@ type aiWrappedMsg struct {
 type Config struct {
 	AI      ai.Options
 	NoCache bool // always ask for fresh AI slides
+	// Settings are the remembered choices: the theme and how to share
+	Settings config.Config
 }
 
 // slideTickMsg advances the Wrapped slides. The id lets manual navigation
@@ -93,6 +96,10 @@ type Model struct {
 	frame               int
 	revealStart         int // frame the current view or slide appeared at
 	share               shareState
+	settings            config.Config
+	// toast is a short message shown in the footer until toastUntil
+	toast      string
+	toastUntil int
 }
 
 func InitialModel(cfg Config) Model {
@@ -118,6 +125,7 @@ func InitialModel(cfg Config) Model {
 		autoplay:    true,
 		aiOpts:      cfg.AI,
 		noCache:     cfg.NoCache,
+		settings:    cfg.Settings,
 	}
 }
 
@@ -294,6 +302,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key := msg.String(); key {
 		case "s":
 			return m, m.startShare()
+		case "t":
+			m.nextTheme()
+			return m, nil
 		case "r":
 			// Re-read the history and ask Gemini again, skipping the cache
 			m.loading, m.refreshing, m.loadStart = true, true, m.frame
@@ -389,8 +400,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}, m.logger)
 
 	case shareDoneMsg:
-		m.shareDone(msg)
-		return m, nil
+		cmd := m.shareDone(msg)
+		return m, cmd
 
 	case slideTickMsg:
 		if msg.id != m.slideTickID || !m.autoplay {
@@ -467,6 +478,10 @@ func (m *Model) syncContent() {
 		return
 	}
 
+	if m.share.open && m.share.customizing {
+		m.viewport.SetContent(render.RenderShareOptions(m.shareOptions(), m.share.cursor, m.width))
+		return
+	}
 	if m.share.open {
 		m.viewport.SetContent(render.RenderShareMenu(m.shareMenu(), m.width))
 		return
@@ -517,12 +532,17 @@ func (m Model) View() string {
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)
 
 	// Footer with controls for the current view
-	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • s: share • r: refresh • q: quit"
+	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • s: share • t: theme • r: refresh • q: quit"
 	switch {
+	case m.share.open && m.share.customizing:
+		help = "↑↓: choose • space ←→: change • enter: create • esc: back • q: quit"
 	case m.share.open:
 		help = "esc: close • q: quit"
 	case m.onWrappedTab():
-		help = "←→: slides • Space: pause • Tab: views • s: share • r: refresh • q: quit"
+		help = "←→: slides • Space: pause • Tab: views • s: share • t: theme • r: refresh • q: quit"
+	}
+	if m.frame < m.toastUntil {
+		help = m.toast
 	}
 	if m.viewport.TotalLineCount() > m.viewport.Height {
 		percent := m.viewport.ScrollPercent()

@@ -31,11 +31,15 @@ func AnalyzeShells() tea.Msg {
 		}
 	}
 
+	return Analyze(data)
+}
+
+// Analyze fills in the insights for the histories in data
+func Analyze(data ShellData) ShellData {
 	// Analyze all shells together so one shell doesn't overwrite another
 	allEntries := AllEntries(data)
 	analyzeCommands(allEntries, &data)
 	data.Insights.ToolUsage = analyzeToolUsage(allEntries)
-
 	return data
 }
 

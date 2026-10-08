@@ -2,6 +2,7 @@ package share
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -15,7 +16,9 @@ import (
 
 	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/config"
 	"github.com/ksauraj/shellrecap/internal/render"
+	"github.com/ksauraj/shellrecap/internal/theme"
 )
 
 func uc(name string, count int) analyzer.UsageCount {
@@ -65,7 +68,24 @@ func testRecap() Recap {
 		{Title: "The Pipe Foreman", Description: "A 4863-character command is a manifesto.", Quotes: []string{"Pipes: because separate commands are lazy."}},
 		{Title: "Helm and Hustle", Description: "Expect more helm and fewer typos.", Quotes: []string{"Tuesday: bring snacks."}},
 	}
-	return Recap{Stats: s, AI: sections}
+	return Recap{Data: testData(), Stats: s, AI: sections}
+}
+
+// testData is a small analyzed history, for the tab pictures
+func testData() analyzer.ShellData {
+	data := analyzer.InitShellData()
+	start := time.Date(2026, 3, 2, 9, 0, 0, 0, time.Local)
+	commands := []string{"git commit -m x", "git push", "kubectl get pods", "vim main.go", "go build ./...",
+		"docker ps", "az login", "make test", "python3 app.py", "npm install", "curl -s example.com | jq ."}
+	for i := 0; i < 220; i++ {
+		cmd := commands[i%len(commands)]
+		data.Histories["fish"] = append(data.Histories["fish"], analyzer.CommandEntry{
+			Command:   cmd,
+			Program:   analyzer.ProgramName(cmd),
+			Timestamp: start.Add(time.Duration(i) * 97 * time.Minute),
+		})
+	}
+	return analyzer.Analyze(data)
 }
 
 func TestParseANSI(t *testing.T) {
@@ -107,8 +127,11 @@ func TestShapes(t *testing.T) {
 func TestEveryCharacterCanBeDrawn(t *testing.T) {
 	useShareStyle()
 	r := testRecap()
-	text := strings.Join(r.slides(render.Anim{Progress: 1}), "\n") + render.RenderPoster(r.Stats, r.persona()) +
-		"·>_ #" + Caption(r)
+	text := strings.Join(r.slides(slideCols, render.Anim{Progress: 1}), "\n") + render.RenderPoster(r.Stats, r.persona()) +
+		r.appHeader(0, 80) + credit() + Caption(r)
+	for _, tab := range tabs {
+		text += tab.render(r, 80, render.Anim{Progress: 1})
+	}
 	rend := newRenderer(15)
 	for _, row := range parseANSI(text, foreground) {
 		for _, c := range row {
@@ -150,7 +173,7 @@ func TestGIFIsLossless(t *testing.T) {
 	fill(frames[3], frames[3].Rect, color.RGBA{9, 9, 9, 255})
 
 	var buf bytes.Buffer
-	if err := encodeGIF(&buf, len(frames), func(i int) *image.RGBA { return frames[i] }, frameDelay); err != nil {
+	if err := encodeGIF(&buf, len(frames), func(i int) (*image.RGBA, int) { return frames[i], frameDelay }); err != nil {
 		t.Fatal(err)
 	}
 	decoded, err := gif.DecodeAll(&buf)
@@ -173,55 +196,123 @@ func TestGIFIsLossless(t *testing.T) {
 	}
 }
 
-func TestGIFFitsPlatformLimits(t *testing.T) {
-	var buf bytes.Buffer
-	start := time.Now()
-	if err := WriteGIF(&buf, testRecap()); err != nil {
-		t.Fatal(err)
-	}
-	took := time.Since(start)
-	// Decoding drains the buffer, so measure it first
-	size := buf.Len()
-	g, err := gif.DecodeAll(&buf)
+// checkGIF decodes a GIF and checks it fits X: at most 1280x1080, 350
+// frames, 300 million pixels in total and 5 MB from mobile
+func checkGIF(t *testing.T, name string, data []byte, want size) *gif.GIF {
+	t.Helper()
+	size := len(data)
+	g, err := gif.DecodeAll(bytes.NewReader(data))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%s: %v", name, err)
 	}
 	w, h, frames := g.Config.Width, g.Config.Height, len(g.Image)
-	// X: at most 1280x1080, 350 frames, 300 million pixels and 5 MB from mobile
+	if w != want.w || h != want.h {
+		t.Errorf("%s is %dx%d, want %dx%d", name, w, h, want.w, want.h)
+	}
 	if w > 1280 || h > 1080 {
-		t.Errorf("GIF is %dx%d, over 1280x1080", w, h)
+		t.Errorf("%s is %dx%d, over 1280x1080", name, w, h)
 	}
 	if frames > 350 || w*h*frames > 300_000_000 {
-		t.Errorf("GIF has %d frames, %d pixels in total", frames, w*h*frames)
+		t.Errorf("%s has %d frames, %d pixels in total", name, frames, w*h*frames)
 	}
 	if size > 5_000_000 {
-		t.Errorf("GIF is %d bytes, over 5 MB", size)
+		t.Errorf("%s is %d bytes, over 5 MB", name, size)
 	}
 	if g.LoopCount != 0 {
-		t.Errorf("GIF loops %d times, want forever", g.LoopCount)
+		t.Errorf("%s loops %d times, want forever", name, g.LoopCount)
 	}
-	// 13 slides at a readable pace
-	if perSlide := frames / 13; perSlide < minSlideFrames {
-		t.Errorf("slides stay up for %d frames, want at least %d", perSlide, minSlideFrames)
-	}
-	t.Logf("%d frames, %.2f MB, %s", frames, float64(size)/1e6, took)
+	t.Logf("%s: %dx%d, %d frames, %.2f MB", name, w, h, frames, float64(size)/1e6)
+	return g
 }
 
-func TestPoster(t *testing.T) {
+func TestRecapGIF(t *testing.T) {
+	for _, gifSize := range config.GIFSizes {
+		var buf bytes.Buffer
+		if err := WriteRecapGIF(&buf, testRecap(), gifSize); err != nil {
+			t.Fatal(err)
+		}
+		g := checkGIF(t, "recap GIF "+gifSize, buf.Bytes(), recapGIFSizes[gifSize])
+		// 13 slides at a readable pace
+		if perSlide := len(g.Image) / 13; perSlide < minSlideFrames {
+			t.Errorf("slides stay up for %d frames, want at least %d", perSlide, minSlideFrames)
+		}
+	}
+}
+
+func TestTourGIF(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WritePoster(&buf, testRecap()); err != nil {
+	if err := WriteTourGIF(&buf, testRecap(), config.GIFStandard); err != nil {
 		t.Fatal(err)
 	}
-	img, err := png.Decode(&buf)
-	if err != nil {
-		t.Fatal(err)
+	g := checkGIF(t, "tour GIF", buf.Bytes(), tourGIFSizes[config.GIFStandard])
+
+	// Each of the 4 tabs and 13 slides animates in, then holds on one frame
+	views := len(tabs) + 13
+	if len(g.Image) != views*(revealFrames+1) {
+		t.Errorf("tour has %d frames, want %d", len(g.Image), views*(revealFrames+1))
 	}
-	if b := img.Bounds(); b.Dx() != posterWidth || b.Dy() != posterHeight {
-		t.Errorf("poster is %v, want %dx%d", b, posterWidth, posterHeight)
+	total := 0
+	for _, d := range g.Delay {
+		total += d
 	}
-	// The corners are background: the content is inside the margins
-	if c := color.RGBAModel.Convert(img.At(2, 2)).(color.RGBA); c != background {
-		t.Errorf("poster corner is %v, want the background", c)
+	if seconds := float64(total) / 100; seconds < 30 || seconds > 60 {
+		t.Errorf("tour lasts %.1fs, want a comfortable read", seconds)
+	}
+	if hold := g.Delay[revealFrames]; hold != tabHold {
+		t.Errorf("first tab holds for %d, want %d", hold, tabHold)
+	}
+}
+
+func TestPictureShapes(t *testing.T) {
+	r := testRecap()
+	for _, shape := range config.Shapes {
+		var poster, tab, slide bytes.Buffer
+		if err := WritePoster(&poster, r, shape); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteTabPicture(&tab, r, 0, shape); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteSlidePicture(&slide, r, 1, shape); err != nil {
+			t.Fatal(err)
+		}
+		for name, buf := range map[string]*bytes.Buffer{"poster": &poster, "tab": &tab, "slide": &slide} {
+			img, err := png.Decode(buf)
+			if err != nil {
+				t.Fatalf("%s %s: %v", shape, name, err)
+			}
+			want := shapes[shape]
+			if b := img.Bounds(); b.Dx() != want.w || b.Dy() != want.h {
+				t.Errorf("%s %s is %v, want %dx%d", shape, name, b, want.w, want.h)
+			}
+			// The corners are background: the content is inside the margins
+			if c := color.RGBAModel.Convert(img.At(2, 2)).(color.RGBA); c != background {
+				t.Errorf("%s %s corner is %v, want the background", shape, name, c)
+			}
+		}
+	}
+}
+
+func TestImageThemes(t *testing.T) {
+	defer theme.Use(theme.Dark)
+	for _, name := range config.ImageThemes {
+		dir := t.TempDir()
+		opts := config.Defaults().Share
+		opts.Outputs, opts.ImageTheme = []string{config.Poster}, name
+		files, err := Export(testRecap(), dir, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f, _ := os.Open(files.Outputs[0].Path)
+		img, err := png.Decode(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := hexColor(theme.Named(name).Base)
+		if c := color.RGBAModel.Convert(img.At(2, 2)).(color.RGBA); c != want {
+			t.Errorf("%s poster background is %v, want %v", name, c, want)
+		}
 	}
 }
 
@@ -291,19 +382,70 @@ func TestLinks(t *testing.T) {
 
 func TestExport(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "shellrecap")
-	files, err := Export(testRecap(), dir)
+	opts := config.Defaults().Share
+	opts.Outputs, opts.GIFSize = config.Outputs, config.GIFSmall
+	files, err := Export(testRecap(), dir, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.GIF != filepath.Join(dir, "shellrecap-2026.gif") || files.Poster != filepath.Join(dir, "shellrecap-2026.png") {
-		t.Errorf("files = %+v", files)
+
+	want := []string{"shellrecap-2026-recap.gif", "shellrecap-2026-tour.gif", "shellrecap-2026-poster.png",
+		"shellrecap-2026-overview.png", "shellrecap-2026-tech-profile.png", "shellrecap-2026-work-patterns.png",
+		"shellrecap-2026-tool-usage.png"}
+	for i := 1; i <= 13; i++ {
+		want = append(want, fmt.Sprintf("shellrecap-2026-slide-%02d.png", i))
+	}
+	if len(files.Outputs) != len(want) {
+		t.Fatalf("exported %d files, want %d", len(files.Outputs), len(want))
+	}
+	for i, o := range files.Outputs {
+		if filepath.Base(o.Path) != want[i] {
+			t.Errorf("output %d is %s, want %s", i, filepath.Base(o.Path), want[i])
+		}
+		if info, err := os.Stat(o.Path); err != nil || info.Size() != o.Bytes || info.Mode().Perm() != 0o644 {
+			t.Errorf("%s = %v, %v; want %d bytes, readable by other apps", o.Path, info, err, o.Bytes)
+		}
 	}
 	entries, _ := os.ReadDir(dir)
-	if len(entries) != 2 {
-		t.Errorf("export left %d files, want just the GIF and the poster", len(entries))
+	if len(entries) != len(want) {
+		t.Errorf("export left %d files, want just the images", len(entries))
 	}
-	if info, err := os.Stat(files.GIF); err != nil || info.Size() != files.GIFBytes || info.Mode().Perm() != 0o644 {
-		t.Errorf("GIF = %v, %v; want %d bytes, readable by other apps", info, err, files.GIFBytes)
+	if gifOut, ok := files.First(config.RecapGIF); !ok || gifOut.Kind != config.RecapGIF {
+		t.Errorf("First(recap) = %+v, %v", gifOut, ok)
+	}
+	if files.Count(config.Tabs) != 4 {
+		t.Errorf("%d tab pictures, want 4", files.Count(config.Tabs))
+	}
+}
+
+func TestExportOnlyWhatsAsked(t *testing.T) {
+	opts := config.Defaults().Share
+	opts.Outputs = []string{config.Poster}
+	files, err := Export(testRecap(), t.TempDir(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files.Outputs) != 1 || files.Outputs[0].Kind != config.Poster {
+		t.Errorf("outputs = %+v, want just the poster", files.Outputs)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	good := config.Defaults().Share
+	if err := validate(good); err != nil {
+		t.Errorf("defaults are invalid: %v", err)
+	}
+	for _, bad := range []func(*config.Share){
+		func(s *config.Share) { s.Outputs = []string{"video"} },
+		func(s *config.Share) { s.GIFSize = "huge" },
+		func(s *config.Share) { s.Shape = "circle" },
+		func(s *config.Share) { s.ImageTheme = "terminal" },
+	} {
+		opts := config.Defaults().Share
+		bad(&opts)
+		if validate(opts) == nil {
+			t.Errorf("accepted %+v", opts)
+		}
 	}
 }
 
@@ -326,7 +468,7 @@ func TestDefaultDir(t *testing.T) {
 
 func TestSlideTiming(t *testing.T) {
 	for _, slides := range []int{1, 9, 13, 30} {
-		perSlide, reveal := slideTiming(slides)
+		perSlide, reveal := slideTiming(slides, recapGIFSizes[config.GIFStandard])
 		frames := perSlide * slides
 		if perSlide < minSlideFrames || perSlide > maxSlideFrames || reveal < 1 || reveal >= perSlide {
 			t.Errorf("%d slides: %d frames each, %d to reveal", slides, perSlide, reveal)
@@ -335,5 +477,21 @@ func TestSlideTiming(t *testing.T) {
 		if frames > maxGIFFrames && perSlide > minSlideFrames {
 			t.Errorf("%d slides: %d frames, over the budget", slides, frames)
 		}
+	}
+}
+
+// Shared pictures go public, so they must never show alias definitions,
+// which can hold hostnames, paths or tokens
+func TestSharedOverviewHidesAliases(t *testing.T) {
+	r := testRecap()
+	r.Data.ShellConfigs["fish"] = analyzer.ShellConfig{
+		Aliases: map[string]string{"deploy": "ssh admin@prod-db.internal --token=s3cret"},
+	}
+	text := stripANSI(tabs[0].render(r, 80, render.Anim{Progress: 1}))
+	if strings.Contains(text, "prod-db") || strings.Contains(text, "s3cret") || strings.Contains(text, "Shell Configuration") {
+		t.Errorf("shared overview shows the shell configuration:\n%s", text)
+	}
+	if !strings.Contains(text, "Languages") {
+		t.Errorf("shared overview is missing the languages card:\n%s", text)
 	}
 }

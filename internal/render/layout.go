@@ -197,8 +197,8 @@ func bar(value, max, width int, tone *theme.Tone, frame int) string {
 
 	var b strings.Builder
 	for i := 0; i < cells; i++ {
-		c := tone.At(float64(i) / float64(maxInt(width-1, 1)))
-		b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(c, glare(i, frame)*glareStrength)).Render("■"))
+		t := float64(i) / float64(maxInt(width-1, 1))
+		b.WriteString(lipgloss.NewStyle().Foreground(tone.Shine(t, glare(i, frame)*glareStrength)).Render("■"))
 	}
 	b.WriteString(theme.Track.Render(strings.Repeat("■", width-cells)))
 	return b.String()
@@ -246,9 +246,8 @@ func columnChart(counts []int, widths []int, gap, height int, tone *theme.Tone, 
 			if fill > 8 {
 				fill = 8
 			}
-			col := tone.At(float64(rowFromBottom+1) / float64(height))
-			shine := glare(x, anim.Frame) * glareStrength
-			b.WriteString(lipgloss.NewStyle().Foreground(theme.Shine(col, shine)).
+			shade := tone.Shine(float64(rowFromBottom+1)/float64(height), glare(x, anim.Frame)*glareStrength)
+			b.WriteString(lipgloss.NewStyle().Foreground(shade).
 				Render(strings.Repeat(chartBlocks[fill], widths[i])))
 			x += widths[i]
 			if i < len(counts)-1 {

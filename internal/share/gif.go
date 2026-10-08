@@ -12,18 +12,18 @@ import (
 // transparent marks pixels a frame leaves as they were in the frame before
 var transparent = color.RGBA{}
 
-// encodeGIF writes n frames as an animated GIF that loops forever, delay
-// hundredths of a second apart. render(i) renders frame i; only the previous
-// frame is kept in memory. Every frame after the first only stores the
+// encodeGIF writes n frames as an animated GIF that loops forever.
+// render(i) renders frame i and says how long it stays up, in hundredths
+// of a second; only the previous frame is kept in memory. Every frame after the first only stores the
 // rectangle that changed, with unchanged pixels left transparent, and gets
 // its own palette holding the exact colors of that rectangle (or the most
 // common ones if there are too many), which keeps files small without
 // shifting colors.
-func encodeGIF(w io.Writer, n int, render func(i int) *image.RGBA, delay int) error {
+func encodeGIF(w io.Writer, n int, render func(i int) (*image.RGBA, int)) error {
 	anim := &gif.GIF{}
 	var prev *image.RGBA
 	for i := 0; i < n; i++ {
-		frame := render(i)
+		frame, delay := render(i)
 		if prev == nil {
 			anim.Config = image.Config{Width: frame.Rect.Dx(), Height: frame.Rect.Dy()}
 		}

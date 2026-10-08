@@ -76,7 +76,19 @@ func highlight(accent theme.Accent, text string) string {
 	return lipgloss.NewStyle().Bold(true).Foreground(accent.Color).Render(text)
 }
 
+// RenderOverview renders the overview tab
 func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
+	return renderOverview(data, width, anim, false)
+}
+
+// RenderOverviewForSharing renders the overview tab for a public picture:
+// the shell configuration card is swapped for languages, because alias
+// definitions can hold hostnames, paths or even tokens
+func RenderOverviewForSharing(data analyzer.ShellData, width int, anim Anim) string {
+	return renderOverview(data, width, anim, true)
+}
+
+func renderOverview(data analyzer.ShellData, width int, anim Anim, sharing bool) string {
 	shells := analyzer.SortedShells(data)
 	if len(shells) == 0 {
 		return grid([]cardSpec{{title: "Overview", accent: theme.MauveAccent, wide: true, body: func(int) []string {
@@ -105,7 +117,20 @@ func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 		shellCounts = append(shellCounts, analyzer.UsageCount{Name: shell, Count: len(data.Histories[shell])})
 	}
 	top := analyzer.TopN(analyzer.SortedCounts(data.CommonCmds), 10)
-	layout := newBarLayout(cardInner(halfCardWidth(width)), shellCounts, top)
+	languages := analyzer.TopN(analyzer.SortedCounts(data.Insights.ToolUsage.Languages), 10)
+	layout := newBarLayout(cardInner(halfCardWidth(width)), shellCounts, top, languages)
+
+	last4 := cardSpec{title: "Shell Configuration", accent: theme.SageAccent, body: func(int) []string {
+		return configLines(data, shells)
+	}}
+	if sharing {
+		last4 = cardSpec{title: "Languages", accent: theme.SageAccent, body: func(int) []string {
+			if len(languages) == 0 {
+				return faint("No language usage found")
+			}
+			return countRows(languages, layout, theme.SageAccent.Tone, anim)
+		}}
+	}
 
 	return grid([]cardSpec{
 		{title: "Summary", accent: theme.MauveAccent, body: func(int) []string {
@@ -130,9 +155,7 @@ func RenderOverview(data analyzer.ShellData, width int, anim Anim) string {
 			}
 			return countRows(top, layout, theme.SandAccent.Tone, anim)
 		}},
-		{title: "Shell Configuration", accent: theme.SageAccent, body: func(int) []string {
-			return configLines(data, shells)
-		}},
+		last4,
 	}, width)
 }
 

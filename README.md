@@ -14,6 +14,7 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
   - [Manual Installation](#manual-installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Themes](#themes)
 - [Share Your Recap](#share-your-recap)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
@@ -27,7 +28,8 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
 - Work pattern analysis
 - Tool usage statistics
 - A yearly recap with ASCII animations and optional AI-written slides
-- Share your recap as an animated GIF or a summary poster in one keypress
+- Themes that match your terminal, whether it's dark, pitch black, light or Ubuntu purple
+- Share your recap as animated GIFs and pictures in one keypress
 
 ## Installation
 
@@ -121,6 +123,9 @@ provider has a backup model for when its preferred one is overloaded. Both work 
 | `GROQ_MODEL`           | Groq model to use when `--model` isn't given                     |
 | `SHELLRECAP_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/shellrecap` on Linux |
 | `SHELLRECAP_SHARE_DIR` | Where share images are saved, defaults to `~/Pictures/shellrecap` |
+| `SHELLRECAP_CONFIG_DIR` | Where your theme and share choices are saved, defaults to `~/.config/shellrecap` on Linux |
+| `SHELLRECAP_THEME`     | Color theme, like `--theme`                                      |
+| `SHELLRECAP_BACKGROUND` | Your terminal's background color, like `#300a24`, for the `auto` theme |
 
 AI slides are cached per year and per model, so the AI isn't called on every launch. Cached
 slides are reused as long as your stats are unchanged, or for up to a week while your command
@@ -140,6 +145,7 @@ shellrecap
 | `--provider <name>`   | `auto` (default: Gemini, falling back to Groq), `gemini` or `groq` |
 | `--model <model>`     | Model to use with `--provider`, e.g. `openai/gpt-oss-20b`          |
 | `--no-cache`          | Always ask the AI for fresh slides                                 |
+| `--theme <name>`      | Color theme: `auto`, `dark`, `black`, `light` or `terminal`        |
 | `--version`           | Print the version                                                  |
 
 ```bash
@@ -159,6 +165,7 @@ shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 | `g` / `G`                 | Jump to top / bottom                           |
 | `Space`                   | Pause / resume slide autoplay in Recap         |
 | `s`                       | Share your recap                               |
+| `t`                       | Switch to the next color theme                 |
 | `r`                       | Re-read history and regenerate AI slides       |
 | `q`                       | Quit application                               |
 
@@ -169,26 +176,66 @@ shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 4. **Tool Usage**: Developer tools usage
 5. **Recap**: Your year in the terminal: top commands, peak hours, git story, stack, new tools, typos and persona
 
+## Themes
+
+shellrecap picks its colors to suit your terminal. Press `t` to try the next theme; your choice is
+remembered.
+
+| Theme      | What it looks like                                                                  |
+|------------|-------------------------------------------------------------------------------------|
+| `auto`     | The default. Reads your terminal's background color and blends every grey from it, so it fits any color scheme, like Ubuntu's purple. Accents are adjusted until they're easy to read. |
+| `dark`     | Muted accents on neutral greys                                                      |
+| `black`    | A little more contrast, for pitch-black terminals and OLED screens                  |
+| `light`    | Deeper accents on pale greys, for light terminals                                   |
+| `terminal` | Your terminal's own 16 colors. Used by `auto` when the terminal can't show more     |
+
+Most terminals report their background color. If yours doesn't and `auto` looks off, tell it the
+color, or pick a theme:
+
+```bash
+SHELLRECAP_BACKGROUND='#300a24' shellrecap   # the auto theme, for this background
+shellrecap --theme light                     # or SHELLRECAP_THEME=light
+```
+
 ## Share Your Recap
 
-Press `s` in the app, or run `shellrecap share`, and your recap is saved as two images:
+Press `s` in the app, or run `shellrecap share`, and your recap is saved as GIFs and pictures:
 
-| File                   | What it is                                    | Best for                       |
-|------------------------|-----------------------------------------------|--------------------------------|
-| `shellrecap-2026.gif`  | Every Recap slide, animated, under 1 MB       | X, Discord, Reddit, Slack      |
-| `shellrecap-2026.png`  | A one-image summary poster (1080x1350)        | Instagram, LinkedIn, Bluesky   |
+| File                                   | What it is                                           | Best for                     |
+|----------------------------------------|------------------------------------------------------|------------------------------|
+| `shellrecap-2026-recap.gif`            | Every Recap slide, animated, under 1 MB              | X, Discord, Reddit, Slack    |
+| `shellrecap-2026-tour.gif`             | Every tab, then the Recap slides, animated           | X, Discord, Reddit, Slack    |
+| `shellrecap-2026-poster.png`           | A one-image summary poster                           | Instagram, LinkedIn, Bluesky |
+| `shellrecap-2026-overview.png` and the other tabs | A picture of each tab                     | Posts with several pictures  |
+| `shellrecap-2026-slide-01.png` and on  | A picture of each Recap slide (off by default)       | Carousels                    |
 
 They're saved to `~/Pictures/shellrecap` and the poster is copied to your clipboard. Pick X,
 Bluesky or LinkedIn in the share menu to open a new post with a caption ready, then paste or drag
-in the image. Nothing is uploaded until you post it yourself.
+in the image. Nothing is uploaded until you post it yourself. The images show program names,
+subcommands like `git commit` and counts, never full command lines or your alias definitions.
+
+Press `c` in the share menu to customize what's created:
+
+| Option        | Choices                                                                         |
+|---------------|---------------------------------------------------------------------------------|
+| Images        | Any of the Recap GIF, tour GIF, poster, tab pictures and slide pictures         |
+| AI slides     | Include the AI-written slides or leave them out                                 |
+| GIF size      | `standard` (1080x1080 Recap, 1280x960 tour) or `small` (720x720, 960x720)       |
+| Picture shape | `portrait` (1080x1350), `story` (1080x1920), `square` (1080x1080) or `landscape` (1920x1080) |
+| Image theme   | `dark`, `black` (pitch black) or `light`                                        |
+
+Your choices are saved in `~/.config/shellrecap/config.json` on Linux and used by
+`shellrecap share` too. Set `SHELLRECAP_CONFIG_DIR` to keep them somewhere else.
 
 On Linux, copying to the clipboard needs `wl-copy` (Wayland) or `xclip` (X11). Without them, or
 over SSH, the images are still saved.
 
 ```bash
-shellrecap share                  # save the images and print links to post them
-shellrecap share --out ~/Desktop  # save them somewhere else
-shellrecap share --no-ai          # leave out the AI-written slides
+shellrecap share                          # save the images and print links to post them
+shellrecap share --out ~/Desktop          # save them somewhere else
+shellrecap share --only recap-gif,poster  # just these: recap-gif, tour-gif, poster, tabs, slides
+shellrecap share --shape story --theme light --gif-size small
+shellrecap share --no-ai                  # leave out the AI-written slides
 ```
 
 ## Development
