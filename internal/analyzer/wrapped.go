@@ -76,6 +76,15 @@ var knownTypos = map[string]string{
 	"nivm": "nvim", "emasc": "emacs", "got": "git", "gut": "git", "dokcer": "docker", "cta": "cat",
 }
 
+// RecapYear is the year to recap at the given time. Like any
+// year-in-review, January still looks back at the year before.
+func RecapYear(now time.Time) int {
+	if now.Month() == time.January {
+		return now.Year() - 1
+	}
+	return now.Year()
+}
+
 // ComputeWrapped computes the year-in-review stats for the given year. When
 // none of the history has timestamps in that year it falls back to all-time
 // stats.

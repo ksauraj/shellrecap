@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/theme"
 	"github.com/ksauraj/shellrecap/internal/types"
@@ -235,6 +236,26 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 	return slides
 }
 
+// AISlides turns AI-written sections into slides, each with the footer
+func AISlides(sections []ai.Section, footer string) []types.Slide {
+	slides := make([]types.Slide, 0, len(sections))
+	for _, section := range sections {
+		var quotes []string
+		for _, q := range section.Quotes {
+			quotes = append(quotes, ai.CleanText(q))
+		}
+		slides = append(slides, types.Slide{
+			Title:  ai.CleanText(section.Title),
+			Lines:  []string{ai.CleanText(section.Description)},
+			Quotes: quotes,
+			Footer: footer,
+			Art:    RobotArt(),
+			AI:     true,
+		})
+	}
+	return slides
+}
+
 func peakHourQuip(hour int) string {
 	switch {
 	case hour < 5:
@@ -251,9 +272,9 @@ func peakHourQuip(hour int) string {
 }
 
 // RenderSlide renders one Recap slide, anchored at the top left like the
-// cards on the other tabs. frame counts animation ticks since the slide
-// appeared and drives its art.
-func RenderSlide(slide types.Slide, label string, index, total int, autoplay bool, frame, width int) string {
+// cards on the other tabs. status follows the slide counter, e.g. "auto".
+// frame counts animation ticks since the slide appeared and drives its art.
+func RenderSlide(slide types.Slide, label, status string, index, total, frame, width int) string {
 	accent := theme.Accents[index%len(theme.Accents)].Color
 	inner := slideInner(width)
 	muted := theme.Faint
@@ -275,9 +296,9 @@ func RenderSlide(slide types.Slide, label string, index, total int, autoplay boo
 	if slide.AI {
 		label += " · AI"
 	}
-	counter := fmt.Sprintf("%d/%d · auto", index+1, total)
-	if !autoplay {
-		counter = fmt.Sprintf("%d/%d · paused", index+1, total)
+	counter := fmt.Sprintf("%d/%d", index+1, total)
+	if status != "" {
+		counter += " · " + status
 	}
 	gap := inner - lipgloss.Width(label) - lipgloss.Width(counter)
 	if gap < 1 {

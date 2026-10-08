@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -93,6 +92,7 @@ type Model struct {
 	slideTickID         int
 	frame               int
 	revealStart         int // frame the current view or slide appeared at
+	share               shareState
 }
 
 func InitialModel(cfg Config) Model {
@@ -104,12 +104,7 @@ func InitialModel(cfg Config) Model {
 
 	tabs := []string{"Overview", "Tech Profile", "Work Patterns", "Tool Usage", "Recap"}
 
-	// Like any year-in-review, January still looks back at the year before
-	now := time.Now()
-	wrappedYear := now.Year()
-	if now.Month() == time.January {
-		wrappedYear--
-	}
+	wrappedYear := analyzer.RecapYear(time.Now())
 
 	return Model{
 		viewport:    viewport.New(80, 24-chromeHeight),
@@ -292,8 +287,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.loading {
 			return m, nil
 		}
+		if m.share.open {
+			return m.handleShareKey(msg.String())
+		}
 
 		switch key := msg.String(); key {
+		case "s":
+			return m, m.startShare()
 		case "r":
 			// Re-read the history and ask Gemini again, skipping the cache
 			m.loading, m.refreshing, m.loadStart = true, true, m.frame
@@ -388,6 +388,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Sections:  result.Sections,
 		}, m.logger)
 
+	case shareDoneMsg:
+		m.shareDone(msg)
+		return m, nil
+
 	case slideTickMsg:
 		if msg.id != m.slideTickID || !m.autoplay {
 			return m, nil
@@ -434,21 +438,7 @@ func (m Model) slides() []types.Slide {
 		footer = fmt.Sprintf("Written by %s %s.", m.aiTarget, ago(m.aiCreatedAt))
 	}
 
-	for _, section := range m.aiSections {
-		var quotes []string
-		for _, q := range section.Quotes {
-			quotes = append(quotes, cleanAIText(q))
-		}
-		slides = append(slides, types.Slide{
-			Title:  cleanAIText(section.Title),
-			Lines:  []string{cleanAIText(section.Description)},
-			Quotes: quotes,
-			Footer: footer,
-			Art:    render.RobotArt(),
-			AI:     true,
-		})
-	}
-	return slides
+	return append(slides, render.AISlides(m.aiSections, footer)...)
 }
 
 // ago describes how long ago t was
@@ -471,45 +461,14 @@ func ago(t time.Time) string {
 	}
 }
 
-// typography maps the curly quotes, dashes and special spaces models like
-// to use to plain ASCII
-var typography = strings.NewReplacer(
-	"\u2018", "'", "\u2019", "'", "\u201c", `"`, "\u201d", `"`,
-	"\u2010", "-", "\u2011", "-", "\u2013", "-", "\u2014", " - ",
-	"\u2026", "...", "\u00a0", " ", "\u202f", " ",
-)
-
-// cleanAIText strips markdown, emoji and fancy typography the model may add
-// despite the prompt
-func cleanAIText(text string) string {
-	text = typography.Replace(text)
-	text = strings.ReplaceAll(text, "**", "")
-	text = strings.ReplaceAll(text, "*", "")
-	text = strings.Map(func(r rune) rune {
-		if isEmoji(r) {
-			return -1
-		}
-		return r
-	}, text)
-	return strings.Join(strings.Fields(text), " ")
-}
-
-func isEmoji(r rune) bool {
-	switch {
-	case r >= 0x1F000 && r <= 0x1FAFF, // pictographs, emoticons and flags
-		r >= 0x2600 && r <= 0x27BF, // miscellaneous symbols and dingbats
-		r >= 0x2300 && r <= 0x23FF, // watches, hourglasses and friends
-		r >= 0x2B00 && r <= 0x2BFF, // stars and heavy arrows
-		r >= 0xFE00 && r <= 0xFE0F, // variation selectors
-		r == 0x200D, r == 0x20E3:   // zero width joiner and keycap
-		return true
-	}
-	return false
-}
-
 // syncContent re-renders the active tab into the scrollable viewport
 func (m *Model) syncContent() {
 	if m.loading {
+		return
+	}
+
+	if m.share.open {
+		m.viewport.SetContent(render.RenderShareMenu(m.shareMenu(), m.width))
 		return
 	}
 
@@ -533,8 +492,12 @@ func (m *Model) syncContent() {
 		if m.wrappedStats.AllTime {
 			label = "SHELLRECAP"
 		}
-		content = render.RenderSlide(slides[m.currentSectionIndex], label,
-			m.currentSectionIndex, len(slides), m.autoplay, m.frame-m.revealStart, m.viewport.Width)
+		status := "auto"
+		if !m.autoplay {
+			status = "paused"
+		}
+		content = render.RenderSlide(slides[m.currentSectionIndex], label, status,
+			m.currentSectionIndex, len(slides), m.frame-m.revealStart, m.viewport.Width)
 	}
 	m.viewport.SetContent(content)
 }
@@ -554,9 +517,12 @@ func (m Model) View() string {
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)
 
 	// Footer with controls for the current view
-	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • r: refresh • q: quit"
-	if m.onWrappedTab() {
-		help = "←→: slides • Space: pause • Tab: views • r: refresh • q: quit"
+	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • s: share • r: refresh • q: quit"
+	switch {
+	case m.share.open:
+		help = "esc: close • q: quit"
+	case m.onWrappedTab():
+		help = "←→: slides • Space: pause • Tab: views • s: share • r: refresh • q: quit"
 	}
 	if m.viewport.TotalLineCount() > m.viewport.Height {
 		percent := m.viewport.ScrollPercent()

@@ -14,6 +14,7 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
   - [Manual Installation](#manual-installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Share Your Recap](#share-your-recap)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -26,6 +27,7 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
 - Work pattern analysis
 - Tool usage statistics
 - A yearly recap with ASCII animations and optional AI-written slides
+- Share your recap as an animated GIF or a summary poster in one keypress
 
 ## Installation
 
@@ -118,6 +120,7 @@ provider has a backup model for when its preferred one is overloaded. Both work 
 | `GEMINI_MODEL`         | Gemini model to use when `--model` isn't given                   |
 | `GROQ_MODEL`           | Groq model to use when `--model` isn't given                     |
 | `SHELLRECAP_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/shellrecap` on Linux |
+| `SHELLRECAP_SHARE_DIR` | Where share images are saved, defaults to `~/Pictures/shellrecap` |
 
 AI slides are cached per year and per model, so the AI isn't called on every launch. Cached
 slides are reused as long as your stats are unchanged, or for up to a week while your command
@@ -155,6 +158,7 @@ shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 | `↑/↓`, `PgUp/PgDn`, mouse | Scroll the current view                        |
 | `g` / `G`                 | Jump to top / bottom                           |
 | `Space`                   | Pause / resume slide autoplay in Recap         |
+| `s`                       | Share your recap                               |
 | `r`                       | Re-read history and regenerate AI slides       |
 | `q`                       | Quit application                               |
 
@@ -164,6 +168,28 @@ shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 3. **Work Patterns**: Productivity patterns
 4. **Tool Usage**: Developer tools usage
 5. **Recap**: Your year in the terminal: top commands, peak hours, git story, stack, new tools, typos and persona
+
+## Share Your Recap
+
+Press `s` in the app, or run `shellrecap share`, and your recap is saved as two images:
+
+| File                   | What it is                                    | Best for                       |
+|------------------------|-----------------------------------------------|--------------------------------|
+| `shellrecap-2026.gif`  | Every Recap slide, animated, under 1 MB       | X, Discord, Reddit, Slack      |
+| `shellrecap-2026.png`  | A one-image summary poster (1080x1350)        | Instagram, LinkedIn, Bluesky   |
+
+They're saved to `~/Pictures/shellrecap` and the poster is copied to your clipboard. Pick X,
+Bluesky or LinkedIn in the share menu to open a new post with a caption ready, then paste or drag
+in the image. Nothing is uploaded until you post it yourself.
+
+On Linux, copying to the clipboard needs `wl-copy` (Wayland) or `xclip` (X11). Without them, or
+over SSH, the images are still saved.
+
+```bash
+shellrecap share                  # save the images and print links to post them
+shellrecap share --out ~/Desktop  # save them somewhere else
+shellrecap share --no-ai          # leave out the AI-written slides
+```
 
 ## Development
 

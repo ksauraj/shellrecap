@@ -311,7 +311,7 @@ func TestNoEmojiOnScreen(t *testing.T) {
 
 	for _, view := range views {
 		for _, r := range view {
-			if isEmoji(r) {
+			if ai.IsEmoji(r) {
 				t.Fatalf("found emoji %q in:\n%s", r, view)
 			}
 		}
@@ -349,7 +349,7 @@ func TestViewFitsTerminal(t *testing.T) {
 }
 
 func TestCleanAIText(t *testing.T) {
-	if got := cleanAIText("\U0001F680 **Cloud**  Wrangler \u2728\n"); got != "Cloud Wrangler" {
+	if got := ai.CleanText("\U0001F680 **Cloud**  Wrangler \u2728\n"); got != "Cloud Wrangler" {
 		t.Errorf("cleanAIText = %q", got)
 	}
 }
