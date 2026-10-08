@@ -32,7 +32,7 @@ const (
 	minSplash = 4 * time.Second
 
 	// Version is the version shown in the header and by --version
-	Version = "v1.2.0"
+	Version = "v1.3.0"
 )
 
 type aiStatus int
