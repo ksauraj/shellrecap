@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -403,7 +404,8 @@ func TestExport(t *testing.T) {
 		if filepath.Base(o.Path) != want[i] {
 			t.Errorf("output %d is %s, want %s", i, filepath.Base(o.Path), want[i])
 		}
-		if info, err := os.Stat(o.Path); err != nil || info.Size() != o.Bytes || info.Mode().Perm() != 0o644 {
+		if info, err := os.Stat(o.Path); err != nil || info.Size() != o.Bytes ||
+			(info.Mode().Perm() != 0o644 && runtime.GOOS != "windows") {
 			t.Errorf("%s = %v, %v; want %d bytes, readable by other apps", o.Path, info, err, o.Bytes)
 		}
 	}

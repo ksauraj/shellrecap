@@ -17,10 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # The latest Go, not go.mod's minimum: macOS refuses binaries from Go
+      # before 1.22.6, which leave out the LC_UUID load command
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Test
         run: go test ./...
