@@ -18,6 +18,10 @@ var backgrounds = map[string]string{
 	"white":            "#ffffff",
 	"solarized light":  "#fdf6e3",
 	"mid grey":         "#808080",
+	// Windows PowerShell's console, cmd, and Windows Terminal's Campbell
+	"windows powershell": "#012456",
+	"cmd":                "#0c0c0c",
+	"campbell":           "#0c0c0c",
 }
 
 func TestDeriveIsLegible(t *testing.T) {

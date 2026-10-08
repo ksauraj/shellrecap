@@ -12,6 +12,8 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
   - [Quick Install Script](#quick-install-script)
   - [Go Install](#go-install)
   - [Manual Installation](#manual-installation)
+- [Supported Shells](#supported-shells)
+  - [Windows and WSL](#windows-and-wsl)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Themes](#themes)
@@ -22,7 +24,7 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
 - [License](#license)
 
 ## Features
-- Shell history analysis for bash, zsh and fish
+- Shell history analysis for bash, zsh, fish, PowerShell, cmd and Nushell, on Linux, macOS, Windows and WSL
 - Tech stack detection
 - Productivity metrics
 - Work pattern analysis
@@ -50,10 +52,20 @@ Download the latest release for your platform:
 
 #### Linux/macOS (One-line installer)
 
-Downloads the right binary for your system into the current directory and starts it.
+Downloads the right binary for your system into the current directory and starts it. It works in
+WSL and in Git Bash on Windows too.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.sh | bash
+```
+
+#### Windows (PowerShell)
+
+Downloads `shellrecap.exe` into the current folder and starts it. Works in Windows PowerShell and
+PowerShell 7.
+
+```powershell
+irm https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.ps1 | iex
 ```
 
 #### Using wget
@@ -78,6 +90,65 @@ chmod +x shellrecap-*
 # Windows PowerShell
 Invoke-WebRequest -Uri "https://github.com/ksauraj/shellrecap/releases/latest/download/shellrecap-windows-amd64.exe" -OutFile "shellrecap.exe"
 ```
+
+## Supported Shells
+
+shellrecap reads every shell history it finds and shows them together.
+
+| Shell       | History it reads                                                     | Times saved                        |
+|-------------|----------------------------------------------------------------------|------------------------------------|
+| bash        | `~/.bash_history`                                                    | When `HISTTIMEFORMAT` is set       |
+| zsh         | `~/.zsh_history`, `~/.histfile`, `$ZDOTDIR/.zsh_history`             | With `EXTENDED_HISTORY`            |
+| fish        | `~/.local/share/fish/fish_history`                                   | Always                             |
+| PowerShell  | PSReadLine's history: `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine` on Windows, `~/.local/share/powershell/PSReadLine` elsewhere | Never |
+| cmd         | Clink's history, `%LOCALAPPDATA%\clink\clink_history`               | With `clink set history.time_stamp save` |
+| Nushell     | `history.txt` in Nushell's config folder                             | Never in the default text format   |
+
+Times are what the Recap's year, the hours you work and your streaks come from. History without
+them still counts toward everything else, and the Recap covers all of it when none of your history
+has times. To start saving them:
+
+```bash
+# bash: add to ~/.bashrc
+export HISTTIMEFORMAT='%F %T '
+# zsh: add to ~/.zshrc
+setopt EXTENDED_HISTORY
+```
+
+```bat
+:: cmd with Clink
+clink set history.time_stamp save
+```
+
+The Shell Configuration card in the Overview also reads each shell's aliases, environment variables
+and plugins: from `~/.bashrc` and the like, PowerShell's profile (`Set-Alias`, one-line functions,
+`$env:` and `Import-Module`), Nushell's `config.nu` and `env.nu`, and Clink's scripts.
+
+### Windows and WSL
+
+On Windows, shellrecap reads:
+
+- **PowerShell**: Windows PowerShell and PowerShell 7 share their history, including the history
+  from VS Code's PowerShell terminal. The profile is found in your Documents folder, even when
+  OneDrive has moved it.
+- **cmd**: cmd forgets its history when you close it. [Clink](https://chrisant996.github.io/clink/)
+  saves it, and shellrecap reads Clink's history.
+- **Git Bash**, **MSYS2** and **Cygwin**: their bash and zsh history.
+- **Nushell**: from `%APPDATA%\nushell`.
+- **WSL**: the bash, zsh and fish history of every WSL distro, shown as `bash (WSL)` and so on. A
+  distro that isn't running is started to read it, which can take a few seconds.
+
+Run inside WSL, shellrecap reads your Linux history as usual, and also the Windows side's
+PowerShell, cmd and Git Bash history, shown as `bash (Windows)` and so on. Share images are saved
+to your Windows Pictures folder, so you can post them from your browser, and the clipboard and
+file manager are Windows'.
+
+Commands are matched the way Windows runs them: `git.exe`, `Git` and
+`& "C:\Program Files\Git\cmd\git.exe"` all count as `git`.
+
+The auto theme follows the classic console's colors, like Windows PowerShell's blue. Windows
+Terminal doesn't report its background color, so pick a theme with `t` there if dark doesn't suit
+your color scheme. Your choice is remembered.
 
 ## Configuration
 
@@ -122,7 +193,7 @@ provider has a backup model for when its preferred one is overloaded. Both work 
 | `GEMINI_MODEL`         | Gemini model to use when `--model` isn't given                   |
 | `GROQ_MODEL`           | Groq model to use when `--model` isn't given                     |
 | `SHELLRECAP_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/shellrecap` on Linux |
-| `SHELLRECAP_SHARE_DIR` | Where share images are saved, defaults to `~/Pictures/shellrecap` |
+| `SHELLRECAP_SHARE_DIR` | Where share images are saved, defaults to a `shellrecap` folder in Pictures |
 | `SHELLRECAP_CONFIG_DIR` | Where your theme and share choices are saved, defaults to `~/.config/shellrecap` on Linux |
 | `SHELLRECAP_THEME`     | Color theme, like `--theme`                                      |
 | `SHELLRECAP_BACKGROUND` | Your terminal's background color, like `#300a24`, for the `auto` theme |
@@ -209,10 +280,11 @@ Press `s` in the app, or run `shellrecap share`, and your recap is saved as GIFs
 | `shellrecap-2026-overview.png` and the other tabs | A picture of each tab                     | Posts with several pictures  |
 | `shellrecap-2026-slide-01.png` and on  | A picture of each Recap slide (off by default)       | Carousels                    |
 
-They're saved to `~/Pictures/shellrecap` and the poster is copied to your clipboard. Pick X,
-Bluesky or LinkedIn in the share menu to open a new post with a caption ready, then paste or drag
-in the image. Nothing is uploaded until you post it yourself. The images show program names,
-subcommands like `git commit` and counts, never full command lines or your alias definitions.
+They're saved to a `shellrecap` folder in your Pictures folder and the poster is copied to your
+clipboard. Pick X, Bluesky or LinkedIn in the share menu to open a new post with a caption ready,
+then paste or drag in the image. Nothing is uploaded until you post it yourself. The images show
+program names, subcommands like `git commit` and counts, never full command lines or your alias
+definitions.
 
 Press `c` in the share menu to customize what's created:
 
@@ -224,8 +296,9 @@ Press `c` in the share menu to customize what's created:
 | Picture shape | `portrait` (1080x1350), `story` (1080x1920), `square` (1080x1080) or `landscape` (1920x1080) |
 | Image theme   | `dark`, `black` (pitch black) or `light`                                        |
 
-Your choices are saved in `~/.config/shellrecap/config.json` on Linux and used by
-`shellrecap share` too. Set `SHELLRECAP_CONFIG_DIR` to keep them somewhere else.
+Your choices are saved in `~/.config/shellrecap/config.json` on Linux
+(`%APPDATA%\shellrecap\config.json` on Windows) and used by `shellrecap share` too. Set
+`SHELLRECAP_CONFIG_DIR` to keep them somewhere else.
 
 On Linux, copying to the clipboard needs `wl-copy` (Wayland) or `xclip` (X11). Without them, or
 over SSH, the images are still saved.
@@ -270,7 +343,16 @@ chmod +x shellrecap
 export PATH=$PATH:$(pwd)
 ```
 
-3. **API Key Issues**
+3. **Windows: no history found**
+cmd doesn't save history unless [Clink](https://chrisant996.github.io/clink/) is installed. If
+your PowerShell history is somewhere unusual, check where PSReadLine keeps it with
+`(Get-PSReadLineOption).HistorySavePath`.
+
+4. **Git Bash: the app doesn't respond to keys**
+Run it as `winpty ./shellrecap.exe`, or from Git Bash inside Windows Terminal. The install script
+does this for you.
+
+5. **API Key Issues**
 Set the keys at runtime, or build with them:
 ```bash
 export GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key

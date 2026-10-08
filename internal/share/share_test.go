@@ -17,6 +17,7 @@ import (
 	"github.com/ksauraj/shellrecap/internal/ai"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/config"
+	"github.com/ksauraj/shellrecap/internal/platform"
 	"github.com/ksauraj/shellrecap/internal/render"
 	"github.com/ksauraj/shellrecap/internal/theme"
 )
@@ -455,6 +456,13 @@ func TestDefaultDir(t *testing.T) {
 		t.Errorf("DefaultDir = %q, want SHELLRECAP_SHARE_DIR", got)
 	}
 	t.Setenv("SHELLRECAP_SHARE_DIR", "")
+	// Windows says where its Pictures folder is, also when asked from WSL
+	if pictures := platform.Pictures(); pictures != "" {
+		if got := DefaultDir(); got != filepath.Join(pictures, "shellrecap") {
+			t.Errorf("DefaultDir = %q, want the shellrecap folder in %s", got, pictures)
+		}
+		return
+	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if got := DefaultDir(); got != filepath.Join(home, "shellrecap") {

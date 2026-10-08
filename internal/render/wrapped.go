@@ -50,7 +50,7 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		return []types.Slide{{
 			Title:    "shellrecap",
 			Headline: "Nothing to recap yet",
-			Lines:    []string{"No shell history was found for bash, zsh or fish."},
+			Lines:    noHistoryLines(),
 			Art:      typingArt("history"),
 		}}
 	}
@@ -344,4 +344,13 @@ func RenderSlide(slide types.Slide, label, status string, index, total, frame, w
 		Padding(1, 3).
 		Width(slideWidth(width) - 2).
 		Render(strings.Join(parts, "\n"))
+}
+
+// noHistoryLines say where shellrecap looked for history
+func noHistoryLines() []string {
+	lines := []string{"No shell history was found. Looked for " + analyzer.SupportedShells() + "."}
+	if tip := analyzer.HistoryTip(); tip != "" {
+		lines = append(lines, tip)
+	}
+	return lines
 }

@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/ksauraj/shellrecap/internal/platform"
 )
 
 // WrappedStats holds the year-in-review numbers behind the Wrapped slides
@@ -66,6 +68,17 @@ var shellBuiltins = toSet("cd", "pwd", "echo", "export", "set", "unset", "source
 	"while", "begin", "end", "and", "or", "not", "else", "case", "switch", "true", "false", "printf",
 	"local", "declare", "typeset", "readonly", "hash", "rehash", "z", "fish_config", "fish_add_path",
 	"conda", "nvm", "pyenv", "rbenv", "sdk", "time", "help", "string", "math", "contains", "status")
+
+// windowsBuiltins are the commands built into cmd and PowerShell's
+// aliases, which aren't programs on PATH either
+var windowsBuiltins = toSet("cls", "dir", "copy", "del", "erase", "move", "ren", "rename", "rd", "md", "chdir",
+	"ver", "vol", "start", "call", "title", "color", "setlocal", "endlocal", "goto", "pause", "rem", "assoc",
+	"ftype", "path", "prompt", "mklink", "cd..", "cd\\",
+	"gci", "gc", "gi", "gl", "gm", "gp", "gps", "gsv", "gv", "gal", "gcm", "ghy", "sl", "sp", "si", "ni", "ri",
+	"mi", "ci", "cpi", "rni", "rvpa", "cvpa", "iwr", "irm", "iex", "ii", "icm", "ipmo", "sal", "nal", "ogv",
+	"fl", "ft", "fw", "measure", "select", "where", "foreach", "sort", "tee", "write", "%", "?", "h", "r",
+	"sajb", "gjb", "rcjb", "spps", "saps", "sleep", "clc", "cli", "clv", "epal", "ipal", "epcsv", "ipcsv",
+	"nv", "sv", "rv", "gu", "gin", "gtz", "scb", "gcb")
 
 var programNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._+-]*$`)
 
@@ -244,14 +257,21 @@ func longestStreak(days map[string]int) int {
 }
 
 func isRealProgram(program string) bool {
-	if shellBuiltins[program] {
+	if shellBuiltins[program] || windowsBuiltins[strings.ToLower(program)] || isCmdlet(program) {
 		return true
 	}
-	if strings.Contains(program, "/") {
+	if strings.ContainsAny(program, `/\`) {
 		return false
 	}
-	_, err := exec.LookPath(program)
-	return err == nil
+	if _, err := exec.LookPath(program); err == nil {
+		return true
+	}
+	// Windows programs run from WSL, like explorer.exe
+	if platform.IsWSL() {
+		_, err := exec.LookPath(program + ".exe")
+		return err == nil
+	}
+	return false
 }
 
 // findTypos finds program names that don't exist but are one edit away from
@@ -261,6 +281,17 @@ func findTypos(programs map[string]int, data ShellData) ([]Typo, int) {
 	for _, config := range data.ShellConfigs {
 		for alias := range config.Aliases {
 			known[alias] = true
+		}
+	}
+	// PowerShell's sl is Set-Location, and cd.. works in cmd and PowerShell
+	if _, ok := data.Histories["powershell"]; ok {
+		for name := range windowsBuiltins {
+			known[name] = true
+		}
+	}
+	if _, ok := data.Histories["cmd"]; ok {
+		for name := range windowsBuiltins {
+			known[name] = true
 		}
 	}
 	// fish functions behave like commands but aren't in PATH

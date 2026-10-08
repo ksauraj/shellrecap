@@ -17,6 +17,7 @@ import (
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/cache"
 	"github.com/ksauraj/shellrecap/internal/config"
+	"github.com/ksauraj/shellrecap/internal/platform"
 	"github.com/ksauraj/shellrecap/internal/theme"
 )
 
@@ -60,11 +61,16 @@ func (f Files) Count(kind string) int {
 	return n
 }
 
-// DefaultDir is SHELLRECAP_SHARE_DIR if set, otherwise
-// ~/Pictures/shellrecap, or ~/shellrecap on systems without a Pictures folder
+// DefaultDir is SHELLRECAP_SHARE_DIR if set, otherwise a shellrecap folder
+// in the Pictures folder, or in the home folder on systems without one.
+// From WSL, it's the Windows Pictures folder, where the browser the images
+// are posted from can find them.
 func DefaultDir() string {
 	if dir := os.Getenv("SHELLRECAP_SHARE_DIR"); dir != "" {
 		return dir
+	}
+	if dir := platform.Pictures(); dir != "" {
+		return filepath.Join(dir, "shellrecap")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -233,7 +239,7 @@ func aiSlides(stats analyzer.WrappedStats, opts ai.Options, cachedOnly bool, sta
 func Command(args []string) int {
 	saved := config.Load().Share
 	flags := flag.NewFlagSet("share", flag.ContinueOnError)
-	out := flags.String("out", DefaultDir(), "folder to save the images in")
+	out := flags.String("out", "", "folder to save the images in (default: a shellrecap folder in Pictures)")
 	only := flags.String("only", strings.Join(saved.Outputs, ","),
 		"images to create, any of: "+strings.Join(config.Outputs, ", "))
 	gifSize := flags.String("gif-size", saved.GIFSize, "GIF size: "+strings.Join(config.GIFSizes, " or "))
@@ -282,6 +288,9 @@ func Command(args []string) int {
 		r.AI = aiSlides(r.Stats, aiOpts, *cachedAI, status)
 	}
 
+	if *out == "" {
+		*out = DefaultDir()
+	}
 	files, err := Export(r, *out, opts)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "shellrecap share:", err)
@@ -329,6 +338,10 @@ func validate(opts config.Share) error {
 func HomePath(path string) string {
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(path, home+string(filepath.Separator)) {
 		return "~" + path[len(home):]
+	}
+	// From WSL, folders on Windows are shown the way Windows shows them
+	if platform.IsWSL() && len(path) > 6 && strings.HasPrefix(path, "/mnt/") && path[6] == '/' {
+		return strings.ToUpper(path[5:6]) + ":" + strings.ReplaceAll(path[6:], "/", `\`)
 	}
 	return path
 }

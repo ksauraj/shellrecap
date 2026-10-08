@@ -3,8 +3,8 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/ksauraj/shellrecap/master/setup.sh | bash
 #
-# Only uses tools that behave the same on macOS (bash 3.2, BSD utilities)
-# and Linux.
+# Only uses tools that behave the same on macOS (bash 3.2, BSD utilities),
+# Linux and Git Bash on Windows. In PowerShell, use setup.ps1 instead.
 set -eu
 
 repo="ksauraj/shellrecap"
@@ -27,9 +27,7 @@ detect_os() {
       ;;
     FreeBSD) echo freebsd ;;
     OpenBSD) echo openbsd ;;
-    MINGW* | MSYS* | CYGWIN*)
-      fail "on Windows, download $binary-windows-amd64.exe from https://github.com/$repo/releases/latest"
-      ;;
+    MINGW* | MSYS* | CYGWIN*) echo windows ;;
     *) fail "unsupported operating system: $(uname -s)" ;;
   esac
 }
@@ -52,7 +50,12 @@ detect_arch() {
 
 os=$(detect_os)
 arch=$(detect_arch)
-url="https://github.com/$repo/releases/latest/download/$binary-$os-$arch"
+ext=""
+if [ "$os" = "windows" ]; then
+  ext=".exe"
+fi
+url="https://github.com/$repo/releases/latest/download/$binary-$os-$arch$ext"
+binary="$binary$ext"
 
 echo "Downloading $binary for $os/$arch..." >&2
 download="$binary.download"
@@ -72,12 +75,19 @@ if [ "$os" = "darwin" ] && command -v xattr >/dev/null 2>&1; then
 fi
 echo "Downloaded ./$binary" >&2
 
+# Git Bash's own window isn't a Windows console, which the app needs;
+# winpty, which comes with Git Bash, provides one
+run=""
+if [ "$os" = "windows" ] && [ "${TERM_PROGRAM:-}" = "mintty" ] && command -v winpty >/dev/null 2>&1; then
+  run="winpty"
+fi
+
 # When this script is piped into bash, its stdin is the script itself, so
 # hand the terminal to the app or it can't read the keyboard
 if [ -t 0 ]; then
-  exec "./$binary"
+  exec $run "./$binary"
 elif (exec </dev/tty) 2>/dev/null; then
-  exec "./$binary" </dev/tty
+  exec $run "./$binary" </dev/tty
 else
   echo "Run ./$binary to start it." >&2
 fi

@@ -92,7 +92,12 @@ func renderOverview(data analyzer.ShellData, width int, anim Anim, sharing bool)
 	shells := analyzer.SortedShells(data)
 	if len(shells) == 0 {
 		return grid([]cardSpec{{title: "Overview", accent: theme.MauveAccent, wide: true, body: func(int) []string {
-			return faint("No shell history found (looked for bash, zsh and fish history files)")
+			lines := faint("No shell history found. Looked for " + analyzer.SupportedShells() + ".")
+			if tip := analyzer.HistoryTip(); tip != "" {
+				lines = append(lines, "")
+				lines = append(lines, faint(tip)...)
+			}
+			return lines
 		}}}, width)
 	}
 

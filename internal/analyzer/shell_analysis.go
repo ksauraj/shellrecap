@@ -13,25 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// AnalyzeShells reads the history of every shell on this machine and
+// analyzes it
 func AnalyzeShells() tea.Msg {
-	data := InitShellData()
-
-	// Read shell histories
-	shellPaths := map[string]string{
-		"bash": "~/.bash_history",
-		"zsh":  "~/.zsh_history",
-		"fish": "~/.local/share/fish/fish_history",
-	}
-
-	for shell, path := range shellPaths {
-		expandedPath := expandPath(path)
-		if history, err := readHistory(shell, expandedPath); err == nil && len(history) > 0 {
-			data.Histories[shell] = history
-			data.ShellConfigs[shell] = analyzeShellConfigs(shell)
-		}
-	}
-
-	return Analyze(data)
+	return Analyze(Load(thisSystem().sources()))
 }
 
 // Analyze fills in the insights for the histories in data
@@ -89,7 +74,7 @@ var languagePrograms = map[string]string{
 	"ruby": "Ruby", "gem": "Ruby", "bundle": "Ruby", "rails": "Ruby", "irb": "Ruby", "rake": "Ruby",
 	"php": "PHP", "composer": "PHP",
 	"gcc": "C/C++", "g++": "C/C++", "clang": "C/C++", "clang++": "C/C++", "cc": "C/C++", "cmake": "C/C++",
-	"dotnet": "C#", "swift": "Swift", "swiftc": "Swift", "lua": "Lua", "perl": "Perl",
+	"dotnet": "C#", "csc": "C#", "nuget": "C#", "py": "Python", "swift": "Swift", "swiftc": "Swift", "lua": "Lua", "perl": "Perl",
 	"R": "R", "Rscript": "R", "julia": "Julia",
 	"ghc": "Haskell", "ghci": "Haskell", "stack": "Haskell", "cabal": "Haskell",
 	"elixir": "Elixir", "mix": "Elixir", "iex": "Elixir", "erl": "Erlang",
@@ -98,15 +83,17 @@ var languagePrograms = map[string]string{
 }
 
 var editorPrograms = toSet("vim", "vi", "nvim", "emacs", "emacsclient", "code", "codium", "cursor", "zed",
-	"nano", "micro", "hx", "helix", "subl", "kak", "gedit", "kate", "pico")
+	"nano", "micro", "hx", "helix", "subl", "kak", "gedit", "kate", "pico",
+	"code-insiders", "notepad", "notepad++", "devenv")
 
 var buildToolPrograms = toSet("make", "cmake", "ninja", "meson", "bazel", "mvn", "gradle", "gradlew", "./gradlew",
-	"ant", "sbt", "npm", "yarn", "pnpm", "bun", "pip", "pip3", "poetry", "uv", "cargo", "composer", "bundle", "mix")
+	"ant", "sbt", "npm", "yarn", "pnpm", "bun", "pip", "pip3", "poetry", "uv", "cargo", "composer", "bundle", "mix",
+	"msbuild", "dotnet", "nuget", "vcpkg")
 
 var devopsPrograms = toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx", "kubens", "helm",
 	"minikube", "kind", "k3s", "oc", "eksctl", "terraform", "tofu", "terragrunt", "pulumi", "ansible",
 	"ansible-playbook", "vagrant", "packer", "aws", "az", "gcloud", "gsutil", "doctl", "flyctl", "fly",
-	"vercel", "netlify", "heroku", "wrangler")
+	"vercel", "netlify", "heroku", "wrangler", "azd")
 
 // skillDomains groups programs into broader areas of expertise
 var skillDomains = []struct {
@@ -116,16 +103,23 @@ var skillDomains = []struct {
 	{"Version Control", toSet("git", "gh", "glab", "svn", "hg", "lazygit", "tig")},
 	{"Containers & K8s", toSet("docker", "docker-compose", "podman", "kubectl", "k9s", "kubectx",
 		"kubens", "helm", "minikube", "kind", "k3s", "oc", "eksctl")},
-	{"Cloud CLIs", toSet("aws", "az", "gcloud", "gsutil", "doctl", "flyctl", "fly", "vercel", "netlify",
+	{"Cloud CLIs", toSet("aws", "az", "azd", "gcloud", "gsutil", "doctl", "flyctl", "fly", "vercel", "netlify",
 		"heroku", "wrangler")},
 	{"Infra as Code", toSet("terraform", "tofu", "terragrunt", "pulumi", "ansible",
 		"ansible-playbook", "vagrant", "packer")},
 	{"System Admin", toSet("systemctl", "journalctl", "service", "apt", "apt-get", "apt-fast", "dpkg",
 		"dnf", "yum", "pacman", "yay", "paru", "brew", "snap", "flatpak", "zypper", "mount", "umount", "chmod",
 		"chown", "useradd", "usermod", "crontab", "dmesg", "lsblk", "fdisk", "htop", "top", "btop", "ps",
-		"kill", "pkill", "killall", "df", "du", "free")},
+		"kill", "pkill", "killall", "df", "du", "free",
+		// Windows
+		"winget", "choco", "scoop", "wsl", "sc", "tasklist", "taskkill", "reg", "sfc", "dism", "diskpart", "wmic",
+		"systeminfo", "icacls", "Get-Process", "Stop-Process", "Get-Service", "Start-Service", "Stop-Service",
+		"Restart-Service", "Get-CimInstance", "Get-WmiObject", "Set-ExecutionPolicy", "Get-WinEvent", "Get-EventLog")},
 	{"Networking", toSet("ssh", "scp", "rsync", "sftp", "curl", "wget", "ping", "traceroute", "dig",
-		"nslookup", "nc", "ncat", "nmap", "ip", "ifconfig", "netstat", "ss", "iptables", "ufw", "tailscale", "wg")},
+		"nslookup", "nc", "ncat", "nmap", "ip", "ifconfig", "netstat", "ss", "iptables", "ufw", "tailscale", "wg",
+		// Windows
+		"ipconfig", "netsh", "tracert", "pathping", "arp", "route", "Test-NetConnection", "Test-Connection",
+		"Invoke-WebRequest", "Invoke-RestMethod", "iwr", "irm", "Resolve-DnsName", "Enter-PSSession")},
 	{"Databases", toSet("mysql", "psql", "pg_dump", "mongo", "mongosh", "redis-cli", "sqlite3", "clickhouse-client")},
 	{"Android & Mobile", toSet("adb", "fastboot", "flutter", "emulator", "scrcpy", "apktool", "sdkmanager")},
 }
@@ -134,7 +128,8 @@ var skillDomains = []struct {
 // tracking, e.g. "git commit" or "docker compose"
 var subcommandTools = toSet("git", "gh", "docker", "docker-compose", "podman", "kubectl", "helm", "npm", "yarn",
 	"pnpm", "bun", "cargo", "go", "az", "aws", "gcloud", "terraform", "tofu", "systemctl", "apt", "apt-get",
-	"brew", "pip", "pip3", "uv", "poetry", "adb", "fastboot", "snap", "flatpak", "dnf", "pacman", "make")
+	"brew", "pip", "pip3", "uv", "poetry", "adb", "fastboot", "snap", "flatpak", "dnf", "pacman", "make",
+	"winget", "choco", "scoop", "dotnet", "nuget", "vcpkg", "azd")
 
 var subcommandPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
@@ -151,7 +146,7 @@ func Subcommand(entry CommandEntry) string {
 	}
 	fields := strings.Fields(entry.Command)
 	for i, field := range fields {
-		if filepath.Base(field) != entry.Program {
+		if !strings.EqualFold(programBase(strings.Trim(field, `"'&`)), entry.Program) {
 			continue
 		}
 		args := fields[i+1:]
@@ -414,25 +409,9 @@ func expandPath(path string) string {
 	return path
 }
 
-func analyzeShellConfigs(shell string) ShellConfig {
-	configPaths := map[string][]string{
-		"bash": {
-			"~/.bashrc",
-			"~/.bash_profile",
-			"~/.bash_aliases",
-		},
-		"zsh": {
-			"~/.zshrc",
-			"~/.zsh_plugins",
-			"~/.zprofile",
-		},
-		"fish": {
-			"~/.config/fish/config.fish",
-			"~/.config/fish/functions",
-			"~/.config/fish/conf.d",
-		},
-	}
-
+// analyzeShellConfig reads a shell's configuration: its aliases,
+// environment variables and plugins
+func analyzeShellConfig(src Source) ShellConfig {
 	config := ShellConfig{
 		ConfigFiles: make(map[string]ConfigInfo),
 		Aliases:     make(map[string]string),
@@ -440,25 +419,36 @@ func analyzeShellConfigs(shell string) ShellConfig {
 		Plugins:     make([]PluginInfo, 0),
 	}
 
-	// Read and analyze config files
-	for _, paths := range configPaths[shell] {
-		expandedPath := expandPath(paths)
-		if info, err := os.Stat(expandedPath); err == nil {
-			content, _ := os.ReadFile(expandedPath)
-			config.ConfigFiles[paths] = ConfigInfo{
-				Path:     expandedPath,
-				Modified: info.ModTime(),
-				Content:  string(content),
-			}
-
-			// Parse the config file
+	for _, path := range src.Config {
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if src.Shell == "cmd" {
+			// Clink's scripts are its plugins
+			config.Plugins = append(config.Plugins, PluginInfo{
+				Name: strings.TrimSuffix(filepath.Base(path), ".lua"), Source: path, LastUpdated: info.ModTime()})
+			continue
+		}
+		content, _ := os.ReadFile(path)
+		config.ConfigFiles[path] = ConfigInfo{
+			Path:     path,
+			Modified: info.ModTime(),
+			Content:  string(content),
+		}
+		switch src.Shell {
+		case "powershell":
+			parsePowerShellConfig(string(content), path, info, &config)
+		case "nu":
+			parseNuConfig(string(content), &config)
+		default:
 			parseShellConfig(string(content), &config)
 		}
 	}
 
-	// Detect plugins based on shell type
-	detectPlugins(shell, &config)
-
+	if src.Home != "" {
+		detectPlugins(src.Shell, src.Home, &config)
+	}
 	return config
 }
 
@@ -489,20 +479,20 @@ func parseShellConfig(content string, config *ShellConfig) {
 	}
 }
 
-func detectPlugins(shell string, config *ShellConfig) {
+func detectPlugins(shell, home string, config *ShellConfig) {
 	switch shell {
 	case "zsh":
-		detectZshPlugins(config)
+		detectZshPlugins(home, config)
 	case "fish":
-		detectFishPlugins(config)
+		detectFishPlugins(home, config)
 	case "bash":
-		detectBashPlugins(config)
+		detectBashPlugins(home, config)
 	}
 }
 
-func detectZshPlugins(config *ShellConfig) {
+func detectZshPlugins(home string, config *ShellConfig) {
 	// Check for Oh My Zsh plugins
-	omzPath := expandPath("~/.oh-my-zsh")
+	omzPath := filepath.Join(home, ".oh-my-zsh")
 	if info, err := os.Stat(omzPath); err == nil && info.IsDir() {
 		pluginsPath := filepath.Join(omzPath, "plugins")
 		if pluginsDir, err := os.ReadDir(pluginsPath); err == nil {
@@ -519,17 +509,11 @@ func detectZshPlugins(config *ShellConfig) {
 	}
 
 	// Check for other plugin managers (Antigen, Zinit, Zplug, etc.)
-	pluginManagers := []string{
-		"~/.antigen",
-		"~/.zinit",
-		"~/.zplug",
-	}
-
-	for _, manager := range pluginManagers {
-		path := expandPath(manager)
+	for _, manager := range []string{".antigen", ".zinit", ".zplug"} {
+		path := filepath.Join(home, manager)
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			config.Plugins = append(config.Plugins, PluginInfo{
-				Name:        filepath.Base(manager),
+				Name:        manager,
 				Source:      path,
 				LastUpdated: info.ModTime(),
 			})
@@ -537,12 +521,15 @@ func detectZshPlugins(config *ShellConfig) {
 	}
 }
 
-func detectFishPlugins(config *ShellConfig) {
-	fishPluginPath := expandPath("~/.config/fish/conf.d")
+func detectFishPlugins(home string, config *ShellConfig) {
+	fishPluginPath := filepath.Join(home, ".config", "fish", "conf.d")
 	if files, err := os.ReadDir(fishPluginPath); err == nil {
 		for _, file := range files {
 			if strings.HasSuffix(file.Name(), ".fish") {
-				info, _ := file.Info()
+				info, err := file.Info()
+				if err != nil {
+					continue
+				}
 				config.Plugins = append(config.Plugins, PluginInfo{
 					Name:        strings.TrimSuffix(file.Name(), ".fish"),
 					Source:      filepath.Join(fishPluginPath, file.Name()),
@@ -553,21 +540,90 @@ func detectFishPlugins(config *ShellConfig) {
 	}
 }
 
-func detectBashPlugins(config *ShellConfig) {
+func detectBashPlugins(home string, config *ShellConfig) {
 	// Check for common bash plugin managers and extensions
-	bashPluginPaths := []string{
-		"~/.bash_it",
-		"~/.local/share/bash-completion",
-	}
-
-	for _, path := range bashPluginPaths {
-		expandedPath := expandPath(path)
+	for _, path := range []string{".bash_it", filepath.Join(".local", "share", "bash-completion")} {
+		expandedPath := filepath.Join(home, path)
 		if info, err := os.Stat(expandedPath); err == nil && info.IsDir() {
 			config.Plugins = append(config.Plugins, PluginInfo{
 				Name:        filepath.Base(path),
 				Source:      expandedPath,
 				LastUpdated: info.ModTime(),
 			})
+		}
+	}
+}
+
+var (
+	// Set-Alias ll Get-ChildItem, or with -Name and -Value
+	psAlias = regexp.MustCompile(`(?i)^\s*(?:set-alias|new-alias|sal|nal)\s+(?:-name\s+)?([^\s-][^\s]*)\s+(?:-value\s+)?([^\s]+)`)
+	// function gs { git status }, on one line
+	psFunction = regexp.MustCompile(`(?i)^\s*function\s+([\w-]+)\s*\{\s*(.+?)\s*\}\s*$`)
+	// $env:EDITOR = "code"
+	psEnv = regexp.MustCompile(`(?i)^\s*\$env:(\w+)\s*=\s*(.+?)\s*$`)
+	// Import-Module posh-git
+	psModule = regexp.MustCompile(`(?i)^\s*(?:import-module|ipmo)\s+(?:-name\s+)?([\w.-]+)`)
+	// prompts and tools set up by running them from the profile
+	psTools = []string{"oh-my-posh", "starship", "zoxide", "fnm", "mise"}
+)
+
+// parsePowerShellConfig reads aliases, environment variables and modules
+// from a PowerShell profile
+func parsePowerShellConfig(content, path string, info os.FileInfo, config *ShellConfig) {
+	plugins := make(map[string]bool)
+	for _, p := range config.Plugins {
+		plugins[strings.ToLower(p.Name)] = true
+	}
+	addPlugin := func(name string) {
+		if !plugins[strings.ToLower(name)] {
+			plugins[strings.ToLower(name)] = true
+			config.Plugins = append(config.Plugins, PluginInfo{Name: name, Source: path, LastUpdated: info.ModTime()})
+		}
+	}
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if m := psAlias.FindStringSubmatch(line); m != nil {
+			config.Aliases[strings.Trim(m[1], `'"`)] = strings.Trim(m[2], `'"`)
+		} else if m := psFunction.FindStringSubmatch(line); m != nil {
+			config.Aliases[m[1]] = m[2]
+		}
+		if m := psEnv.FindStringSubmatch(line); m != nil {
+			config.Environment[m[1]] = strings.Trim(m[2], `'"`)
+		}
+		if m := psModule.FindStringSubmatch(line); m != nil {
+			addPlugin(m[1])
+		}
+		lower := strings.ToLower(line)
+		for _, tool := range psTools {
+			if strings.Contains(lower, tool) {
+				addPlugin(tool)
+			}
+		}
+	}
+}
+
+var (
+	// alias ll = ls -l
+	nuAlias = regexp.MustCompile(`^\s*(?:export\s+)?alias\s+([^\s=]+)\s*=\s*(.+?)\s*$`)
+	// $env.EDITOR = "hx"
+	nuEnv = regexp.MustCompile(`^\s*\$env\.(\w+)\s*=\s*(.+?)\s*$`)
+)
+
+// parseNuConfig reads aliases and environment variables from Nushell's
+// config.nu and env.nu
+func parseNuConfig(content string, config *ShellConfig) {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if m := nuAlias.FindStringSubmatch(line); m != nil {
+			config.Aliases[m[1]] = strings.Trim(m[2], `'"`)
+		}
+		if m := nuEnv.FindStringSubmatch(line); m != nil {
+			config.Environment[m[1]] = strings.Trim(m[2], `'"`)
 		}
 	}
 }

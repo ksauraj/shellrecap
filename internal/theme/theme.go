@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ksauraj/shellrecap/internal/platform"
 	"github.com/lucasb-eyer/go-colorful"
 	"github.com/muesli/termenv"
 )
@@ -123,6 +124,12 @@ func Detect() {
 	// For terminals that don't say what their background is
 	if c, err := colorful.Hex(os.Getenv("SHELLRECAP_BACKGROUND")); err == nil {
 		detected = Derive(c)
+		return
+	}
+	// The classic Windows console, where Windows PowerShell is blue, says
+	// what its background is through the console API instead
+	if r, g, b, ok := platform.ConsoleBackground(); ok {
+		detected = Derive(colorful.Color{R: float64(r) / 255, G: float64(g) / 255, B: float64(b) / 255})
 		return
 	}
 	out := termenv.NewOutput(os.Stdout)
