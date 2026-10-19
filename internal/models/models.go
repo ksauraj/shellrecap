@@ -105,6 +105,7 @@ type Model struct {
 	frame               int
 	revealStart         int // frame the current view or slide appeared at
 	share               shareState
+	keys                keysState
 	settings            config.Config
 	// toast is a short message shown in the footer until toastUntil
 	toast      string
@@ -323,6 +324,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// A key being pasted can have a q in it
+		if m.keys.open && m.keys.editing && msg.String() != "ctrl+c" {
+			return m.handleKeysKey(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -333,10 +338,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.share.open {
 			return m.handleShareKey(msg.String())
 		}
+		if m.keys.open {
+			return m.handleKeysKey(msg)
+		}
 
 		switch key := msg.String(); key {
 		case "s":
 			return m, m.startShare()
+		case "a":
+			m.openKeys()
+			return m, nil
 		case "t":
 			m.nextTheme()
 			return m, nil
@@ -524,6 +535,10 @@ func (m *Model) syncContent() {
 		m.viewport.SetContent(render.RenderShareMenu(m.shareMenu(), m.width))
 		return
 	}
+	if m.keys.open {
+		m.viewport.SetContent(render.RenderKeysPanel(m.keysPanel(), m.width))
+		return
+	}
 
 	anim := m.anim()
 	var content string
@@ -570,14 +585,18 @@ func (m Model) View() string {
 	tabBar := render.RenderTabs(m.tabs, m.activeTab, m.width)
 
 	// Footer with controls for the current view
-	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • s: share • t: theme • r: refresh • q: quit"
+	help := "Tab/←→: views • ↑↓/PgUp/PgDn: scroll • s: share • a: AI keys • t: theme • r: refresh • q: quit"
 	switch {
+	case m.keys.open && m.keys.editing:
+		help = "paste your key • enter: save • esc: cancel"
+	case m.keys.open:
+		help = "↑↓: choose • enter: paste a key • o: open the page • d: remove • esc: close • q: quit"
 	case m.share.open && m.share.customizing:
 		help = "↑↓: choose • space ←→: change • enter: create • esc: back • q: quit"
 	case m.share.open:
 		help = "esc: close • q: quit"
 	case m.onWrappedTab():
-		help = "←→: slides • Space: pause • Tab: views • s: share • t: theme • r: refresh • q: quit"
+		help = "←→: slides • Space: pause • Tab: views • s: share • a: AI keys • t: theme • r: refresh • q: quit"
 	}
 	if m.frame < m.toastUntil {
 		help = m.toast

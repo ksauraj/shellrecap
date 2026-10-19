@@ -271,3 +271,21 @@ func TestBuiltInKeysAreSealed(t *testing.T) {
 		t.Errorf("key() = %q, want the sealed key opened", got)
 	}
 }
+
+func TestSavedKeyComesFirst(t *testing.T) {
+	old := groqAPIKey
+	t.Cleanup(func() { groqAPIKey = old; SetSavedKey(Groq, "") })
+	groqAPIKey, _ = secret.Seal("gsk_built_in")
+	t.Setenv("GROQ_API_KEY", "")
+	if key, from := apiKey(Groq); key != "gsk_built_in" || from != FromBuiltIn {
+		t.Errorf("apiKey = %q from %q, want the built-in key", key, from)
+	}
+	t.Setenv("GROQ_API_KEY", "gsk_from_env")
+	if key, from := apiKey(Groq); key != "gsk_from_env" || from != FromEnv {
+		t.Errorf("apiKey = %q from %q, want the environment's key over the built-in one", key, from)
+	}
+	SetSavedKey(Groq, "gsk_saved")
+	if key, from := apiKey(Groq); key != "gsk_saved" || from != FromSaved {
+		t.Errorf("apiKey = %q from %q, want the saved key first", key, from)
+	}
+}

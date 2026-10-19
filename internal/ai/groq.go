@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/ksauraj/shellrecap/internal/secret"
@@ -17,7 +16,7 @@ import (
 // internal/secret so it isn't stored as plain text. It's set at build time
 // with -ldflags "-X github.com/ksauraj/shellrecap/internal/ai.groqAPIKey=..."
 // from the output of `go run ./internal/secret/sealkey GROQ_API_KEY`; see the
-// Makefile. Without it, the GROQ_API_KEY environment variable is used.
+// Makefile. A saved key or the GROQ_API_KEY environment variable comes first.
 var groqAPIKey string
 
 // groqAPIURL is a variable so tests can point it at a fake server
@@ -34,10 +33,12 @@ var groqStrictModels = map[string]bool{
 type groqProvider struct{}
 
 func (groqProvider) key() string {
-	if key := secret.Open(groqAPIKey); key != "" {
-		return key
-	}
-	return os.Getenv("GROQ_API_KEY")
+	key, _ := apiKey(Groq)
+	return key
+}
+
+func (groqProvider) builtInKey() string {
+	return secret.Open(groqAPIKey)
 }
 
 // defaultModels prefers Qwen, which writes the most personal slides of the

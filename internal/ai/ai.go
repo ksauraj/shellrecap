@@ -53,6 +53,8 @@ var displayNames = map[string]string{Gemini: "Gemini", Groq: "Groq"}
 type provider interface {
 	// key returns the API key, or "" when none is configured
 	key() string
+	// builtInKey returns the key built into the binary, or ""
+	builtInKey() string
 	// defaultModels are tried in order: the preferred model first, then a
 	// backup for when it's overloaded or withdrawn
 	defaultModels() []string
@@ -62,6 +64,55 @@ type provider interface {
 var providers = map[string]provider{
 	Gemini: geminiProvider{},
 	Groq:   groqProvider{},
+}
+
+// Where an API key came from
+const (
+	FromSaved   = "saved"       // pasted into the Advanced panel
+	FromEnv     = "environment" // GEMINI_API_KEY or GROQ_API_KEY
+	FromBuiltIn = "built in"    // built into this binary
+)
+
+// savedKeys are the keys pasted into the Advanced panel, by provider
+var savedKeys = map[string]string{}
+
+// SetSavedKey uses key for the provider ahead of any other, or stops
+// using a saved key when key is ""
+func SetSavedKey(provider, key string) {
+	if key == "" {
+		delete(savedKeys, provider)
+		return
+	}
+	savedKeys[provider] = key
+}
+
+// EnvVar is the environment variable that holds the provider's key
+func EnvVar(provider string) string {
+	return strings.ToUpper(provider) + "_API_KEY"
+}
+
+// apiKey returns the provider's key and where it came from: a saved key
+// first, then the environment, then the key built in. Your own key always
+// wins over the shared one built into releases.
+func apiKey(provider string) (key, from string) {
+	if key := savedKeys[provider]; key != "" {
+		return key, FromSaved
+	}
+	if key := strings.TrimSpace(os.Getenv(EnvVar(provider))); key != "" {
+		return key, FromEnv
+	}
+	if p, ok := providers[provider]; ok {
+		if key := p.builtInKey(); key != "" {
+			return key, FromBuiltIn
+		}
+	}
+	return "", ""
+}
+
+// KeySource says where the provider's key comes from, or "" without one
+func KeySource(provider string) string {
+	_, from := apiKey(provider)
+	return from
 }
 
 // ErrNoAPIKey is returned when none of the providers to try has an API key
@@ -109,15 +160,15 @@ func AnyAvailable(opts Options) bool {
 	return false
 }
 
-// KeyHint tells the user which environment variable unlocks AI slides
+// KeyHint tells the user how to unlock AI slides
 func KeyHint(opts Options) string {
 	switch opts.Provider {
 	case Gemini:
-		return "Set GEMINI_API_KEY to unlock AI-written slides."
+		return "Press a to add a free Gemini API key and unlock AI-written slides."
 	case Groq:
-		return "Set GROQ_API_KEY to unlock AI-written slides."
+		return "Press a to add a free Groq API key and unlock AI-written slides."
 	}
-	return "Set GEMINI_API_KEY or GROQ_API_KEY to unlock AI-written slides."
+	return "Press a to add a free Gemini or Groq API key and unlock AI-written slides."
 }
 
 // ValidateOptions checks options given on the command line

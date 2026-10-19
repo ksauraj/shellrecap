@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/ksauraj/shellrecap/internal/secret"
@@ -17,7 +16,7 @@ import (
 // internal/secret so it isn't stored as plain text. It's set at build time
 // with -ldflags "-X github.com/ksauraj/shellrecap/internal/ai.geminiAPIKey=..."
 // from the output of `go run ./internal/secret/sealkey GEMINI_API_KEY`; see the
-// Makefile. Without it, the GEMINI_API_KEY environment variable is used.
+// Makefile. A saved key or the GEMINI_API_KEY environment variable comes first.
 var geminiAPIKey string
 
 // geminiAPIBase is a variable so tests can point it at a fake server
@@ -49,10 +48,12 @@ var geminiSchema = map[string]interface{}{
 type geminiProvider struct{}
 
 func (geminiProvider) key() string {
-	if key := secret.Open(geminiAPIKey); key != "" {
-		return key
-	}
-	return os.Getenv("GEMINI_API_KEY")
+	key, _ := apiKey(Gemini)
+	return key
+}
+
+func (geminiProvider) builtInKey() string {
+	return secret.Open(geminiAPIKey)
 }
 
 // defaultModels prefers the latest Flash model and falls back to

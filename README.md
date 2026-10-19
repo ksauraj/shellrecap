@@ -200,6 +200,34 @@ languages, tools, typos, and when in the day and week you're busiest. Never sent
   key (`ghp_…`, `sk-…`, `AIza…`), a host name, a long random string or number, or one of
   your own scripts (`deploy-acme.sh`)
 
+#### Use your own API key
+
+Press `a` in the app to open the **Advanced** panel, pick Gemini or Groq, press `Enter` and paste
+your key. It's checked, saved and used straight away. Both are free:
+
+**Gemini**
+1. You need a Google account. A personal Gmail works; on a work or school account, the admin
+   may have turned AI Studio off.
+2. Open [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and sign in. Accept
+   the terms the first time.
+3. Click **Create API key**. AI Studio makes a Google Cloud project for it, so you don't need to
+   set up Google Cloud yourself, or billing for the free tier. If you already use Google Cloud,
+   you can pick one of your projects instead.
+4. Copy the key. It starts with `AIza`.
+
+The free tier isn't offered in every country; where it isn't, turn on billing for the project.
+On the free tier, Google may use what's sent to improve its products.
+
+**Groq**
+1. Sign up at [console.groq.com](https://console.groq.com) with your email, Google or GitHub
+   account. No card is needed for the free plan.
+2. Open [console.groq.com/keys](https://console.groq.com/keys) and click **Create API Key**.
+3. Copy the key straight away, Groq only shows it once. It starts with `gsk_`.
+
+Pasted keys are saved to `keys.json` next to your config (`~/.config/shellrecap` on Linux),
+readable only by you, and come first: then `GEMINI_API_KEY` / `GROQ_API_KEY`, then any key built
+into shellrecap. Press `d` in the panel to remove a saved key.
+
 shellrecap asks **Gemini** first and falls back to **Groq** if Gemini fails or has no key. Each
 provider has a backup model for when its preferred one is overloaded. Both work on their free tiers.
 
@@ -210,8 +238,8 @@ provider has a backup model for when its preferred one is overloaded. Both work 
 
 | Variable               | Description                                                      |
 |------------------------|------------------------------------------------------------------|
-| `GEMINI_API_KEY`       | Gemini API key, used when none was compiled in with `-ldflags`   |
-| `GROQ_API_KEY`         | Groq API key, used when none was compiled in with `-ldflags`     |
+| `GEMINI_API_KEY`       | Gemini API key, used when none was pasted in with `a`            |
+| `GROQ_API_KEY`         | Groq API key, used when none was pasted in with `a`              |
 | `GEMINI_MODEL`         | Gemini model to use when `--model` isn't given                   |
 | `GROQ_MODEL`           | Groq model to use when `--model` isn't given                     |
 | `SHELLRECAP_CACHE_DIR` | Where AI slides are cached, defaults to `~/.cache/shellrecap` on Linux |
@@ -258,6 +286,7 @@ shellrecap --provider gemini --model gemini-3.5-flash-lite --no-cache
 | `g` / `G`                 | Jump to top / bottom                           |
 | `Space`                   | Pause / resume slide autoplay in Recap         |
 | `s`                       | Share your recap                               |
+| `a`                       | Advanced: paste your own Gemini or Groq API key |
 | `t`                       | Switch to the next color theme                 |
 | `r`                       | Re-read history and regenerate AI slides       |
 | `q`                       | Quit application                               |
@@ -375,7 +404,8 @@ Run it as `winpty ./shellrecap.exe`, or from Git Bash inside Windows Terminal. T
 does this for you.
 
 5. **API Key Issues**
-Set the keys at runtime, or build with them:
+Press `a` to paste a key and see which key each provider is using. Or set the keys at runtime,
+or build with them:
 ```bash
 export GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key
 make build GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key

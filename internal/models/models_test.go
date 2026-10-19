@@ -111,7 +111,7 @@ func TestWrappedWithoutAPIKey(t *testing.T) {
 	if m.aiStatus != aiDisabled {
 		t.Fatalf("aiStatus = %v, want aiDisabled", m.aiStatus)
 	}
-	if view := lastSlide(t, m); !strings.Contains(view, "GEMINI_API_KEY") {
+	if view := lastSlide(t, m); !strings.Contains(view, "Press a to add") {
 		t.Errorf("last slide doesn't explain how to enable AI slides:\n%s", view)
 	}
 }
@@ -471,11 +471,11 @@ func TestNoCacheAlwaysAsks(t *testing.T) {
 
 func TestKeyHintMatchesProvider(t *testing.T) {
 	m := testModelWith(t, Config{AI: ai.Options{Provider: ai.Groq}}, "", "")
-	if view := lastSlide(t, m); !strings.Contains(view, "Set GROQ_API_KEY") {
-		t.Errorf("hint doesn't mention GROQ_API_KEY:\n%s", view)
+	if view := lastSlide(t, m); !strings.Contains(view, "free Groq API key") {
+		t.Errorf("hint doesn't mention a Groq key:\n%s", view)
 	}
 	m = testModelWith(t, Config{}, "", "")
-	if view := lastSlide(t, m); !strings.Contains(view, "GEMINI_API_KEY or GROQ_API_KEY") {
+	if view := lastSlide(t, m); !strings.Contains(view, "Gemini or Groq") {
 		t.Errorf("hint doesn't mention both keys:\n%s", view)
 	}
 }

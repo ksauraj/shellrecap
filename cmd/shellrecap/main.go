@@ -16,6 +16,11 @@ import (
 )
 
 func main() {
+	// Keys pasted into the Advanced panel come before any others
+	keys := config.LoadKeys()
+	ai.SetSavedKey(ai.Gemini, keys.Gemini)
+	ai.SetSavedKey(ai.Groq, keys.Groq)
+
 	if len(os.Args) > 1 && os.Args[1] == "share" {
 		os.Exit(share.Command(os.Args[2:]))
 	}
@@ -34,13 +39,13 @@ func main() {
 			"       shellrecap share [flags]   save your recap as GIFs and pictures to post\n\nFlags:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(flag.CommandLine.Output(), "\nEnvironment:\n"+
-			"  GEMINI_API_KEY, GROQ_API_KEY   API keys for the AI slides\n"+
+			"  GEMINI_API_KEY, GROQ_API_KEY   API keys for the AI slides, or press a in the app to paste them\n"+
 			"  GEMINI_MODEL, GROQ_MODEL       default models when --model isn't given\n"+
 			"  SHELLRECAP_THEME               color theme, like --theme\n"+
 			"  SHELLRECAP_BACKGROUND          your terminal's background, like #300a24, for the auto theme\n"+
 			"  SHELLRECAP_CACHE_DIR           where AI slides are cached\n"+
 			"  SHELLRECAP_SHARE_DIR           where share images are saved\n"+
-			"  SHELLRECAP_CONFIG_DIR          where your theme and share choices are saved\n")
+			"  SHELLRECAP_CONFIG_DIR          where your theme, share choices and pasted API keys are saved\n")
 	}
 	flag.Parse()
 
