@@ -168,9 +168,23 @@ make build
 make build GEMINI_API_KEY=your_gemini_key GROQ_API_KEY=your_groq_key
 
 # Or using go build directly
-go build -ldflags "-X github.com/ksauraj/shellrecap/internal/ai.geminiAPIKey=YOUR_GEMINI_KEY \
-  -X github.com/ksauraj/shellrecap/internal/ai.groqAPIKey=YOUR_GROQ_KEY" ./cmd/shellrecap
+go build ./cmd/shellrecap
 ```
+
+Keys compiled in are sealed first, so they aren't stored in the binary as plain text where
+`strings` or a key-scanning bot would find them, and `make` doesn't print them. To build
+with keys without `make`, seal each one with `internal/secret/sealkey`, which reads the key from
+the environment variable you name:
+
+```bash
+pkg=github.com/ksauraj/shellrecap/internal/ai
+go build -ldflags "-s -w -X $pkg.geminiAPIKey=$(go run ./internal/secret/sealkey GEMINI_API_KEY) \
+  -X $pkg.groqAPIKey=$(go run ./internal/secret/sealkey GROQ_API_KEY)" ./cmd/shellrecap
+```
+
+Sealing is obfuscation, not encryption: shellrecap has to read its own keys, so a determined
+person can still dig them out of a binary. Give keys you ship spending limits or quotas.
+A key compiled in as plain text is ignored.
 
 ### AI slides (optional)
 

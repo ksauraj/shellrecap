@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ksauraj/shellrecap/internal/secret"
 )
 
 const slidesJSON = `{"sections":[{"title":"Cloud Wrangler","description":"You live in az.","quotes":["az login, again"]}]}`
@@ -251,5 +253,21 @@ func TestValidateOptions(t *testing.T) {
 func TestStripCodeFence(t *testing.T) {
 	if got := stripCodeFence("```json\n{\"a\":1}\n```"); got != `{"a":1}` {
 		t.Errorf("stripCodeFence = %q", got)
+	}
+}
+
+func TestBuiltInKeysAreSealed(t *testing.T) {
+	t.Setenv("GEMINI_API_KEY", "")
+	old := geminiAPIKey
+	t.Cleanup(func() { geminiAPIKey = old })
+
+	// A key built in as plain text isn't used
+	geminiAPIKey = "AIza-plain-text-key"
+	if got := (geminiProvider{}).key(); got != "" {
+		t.Errorf("a plain text built-in key was used: %q", got)
+	}
+	geminiAPIKey, _ = secret.Seal("AIza-sealed-key")
+	if got := (geminiProvider{}).key(); got != "AIza-sealed-key" {
+		t.Errorf("key() = %q, want the sealed key opened", got)
 	}
 }
