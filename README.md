@@ -189,8 +189,16 @@ A key compiled in as plain text is ignored.
 ### AI slides (optional)
 
 The Recap view is computed locally from your history. With an API key it also gets a few
-AI-written slides (persona, roast, superpower and forecast). Only aggregate stats such as program
-names and counts are sent, never full command lines.
+AI-written slides (persona, roast, superpower and forecast).
+
+What's sent to the AI is a short summary of counts: your top programs and git subcommands,
+languages, tools, typos, and when in the day and week you're busiest. Never sent:
+
+- Command lines, arguments, file names, paths or directories
+- Your user name, host name, environment variables or the dates you ran things
+- Names that could be private even as a program name: anything that looks like a token or
+  key (`ghp_…`, `sk-…`, `AIza…`), a host name, a long random string or number, or one of
+  your own scripts (`deploy-acme.sh`)
 
 shellrecap asks **Gemini** first and falls back to **Groq** if Gemini fails or has no key. Each
 provider has a backup model for when its preferred one is overloaded. Both work on their free tiers.

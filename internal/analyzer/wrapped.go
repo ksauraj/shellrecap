@@ -459,7 +459,11 @@ func (s WrappedStats) BusiestWeekday() time.Weekday {
 
 // Summary describes the stats for the AI prompt. It only includes program
 // names and counts, never full command lines, which may contain secrets.
+// Names that could be private, like tokens, host names or someone's own
+// scripts, are left out too; see PublicName. Nothing identifies the
+// person: no user or host names, paths, directories or timestamps.
 func (s WrappedStats) Summary() string {
+	s = s.public()
 	var b strings.Builder
 	period := fmt.Sprintf("the year %d", s.Year)
 	if s.AllTime {
@@ -503,6 +507,26 @@ func (s WrappedStats) Summary() string {
 		fmt.Fprintf(&b, "Typos (%d total): %s\n", s.TotalTypos, strings.Join(typos, ", "))
 	}
 	return b.String()
+}
+
+// public is a copy of the stats without the names that aren't safe to send
+func (s WrappedStats) public() WrappedStats {
+	s.TopPrograms = publicCounts(s.TopPrograms)
+	s.TopGitSubcommands = publicCounts(s.TopGitSubcommands)
+	s.Languages = publicCounts(s.Languages)
+	s.DevOps = publicCounts(s.DevOps)
+	s.Editors = publicCounts(s.Editors)
+	s.NewPrograms = publicCounts(s.NewPrograms)
+	var typos []Typo
+	for _, t := range s.Typos {
+		if PublicName(t.Typed) && PublicName(t.Meant) {
+			typos = append(typos, t)
+		} else {
+			s.TotalTypos -= t.Count
+		}
+	}
+	s.Typos = typos
+	return s
 }
 
 // timeOfDay splits the day into named parts, as [from, to) hours
