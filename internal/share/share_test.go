@@ -64,6 +64,10 @@ func testRecap() Recap {
 	for d := range s.WeekdayCounts {
 		s.WeekdayCounts[d] = 500
 	}
+	s.DayCounts = make(map[string]int)
+	for day := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local); day.Year() == 2026; day = day.AddDate(0, 0, 2) {
+		s.DayCounts[day.Format("2006-01-02")] = 5 + day.YearDay()%40
+	}
 	sections := []ai.Section{
 		{Title: "The Tuesday Afternoon Architect", Description: "48% of your commands land in the afternoon.", Quotes: []string{"kubectl is just cd with more confidence."}},
 		{Title: "Typo Archaeologist", Description: "Between 'gti' and 'claer', your muscle memory fights back.", Quotes: []string{"One clear? Ambition."}},
@@ -234,8 +238,8 @@ func TestRecapGIF(t *testing.T) {
 			t.Fatal(err)
 		}
 		g := checkGIF(t, "recap GIF "+gifSize, buf.Bytes(), recapGIFSizes[gifSize])
-		// 13 slides at a readable pace
-		if perSlide := len(g.Image) / 13; perSlide < minSlideFrames {
+		// 14 slides at a readable pace
+		if perSlide := len(g.Image) / 14; perSlide < minSlideFrames {
 			t.Errorf("slides stay up for %d frames, want at least %d", perSlide, minSlideFrames)
 		}
 	}
@@ -248,8 +252,8 @@ func TestTourGIF(t *testing.T) {
 	}
 	g := checkGIF(t, "tour GIF", buf.Bytes(), tourGIFSizes[config.GIFStandard])
 
-	// Each of the 4 tabs and 13 slides animates in, then holds on one frame
-	views := len(tabs) + 13
+	// Each of the 4 tabs and 14 slides animates in, then holds on one frame
+	views := len(tabs) + 14
 	if len(g.Image) != views*(revealFrames+1) {
 		t.Errorf("tour has %d frames, want %d", len(g.Image), views*(revealFrames+1))
 	}
@@ -394,7 +398,7 @@ func TestExport(t *testing.T) {
 	want := []string{"shellrecap-2026-recap.gif", "shellrecap-2026-tour.gif", "shellrecap-2026-poster.png",
 		"shellrecap-2026-overview.png", "shellrecap-2026-tech-profile.png", "shellrecap-2026-work-patterns.png",
 		"shellrecap-2026-tool-usage.png"}
-	for i := 1; i <= 13; i++ {
+	for i := 1; i <= 14; i++ {
 		want = append(want, fmt.Sprintf("shellrecap-2026-slide-%02d.png", i))
 	}
 	if len(files.Outputs) != len(want) {

@@ -39,6 +39,7 @@ type WrappedStats struct {
 	WeekdayCounts   [7]int
 	MonthCounts     [12]int
 	ActiveDays      int
+	DayCounts       map[string]int // commands per local day, keyed "2006-01-02"
 	LongestStreak   int
 	BusiestDay      time.Time
 	BusiestDayCount int
@@ -208,6 +209,7 @@ func ComputeWrapped(data ShellData, year int) WrappedStats {
 	// makes time-of-day stats meaningless
 	stats.HasTimes = len(days) > 1
 	stats.ActiveDays = len(days)
+	stats.DayCounts = days
 	for day, count := range days {
 		if count > stats.BusiestDayCount {
 			stats.BusiestDayCount = count

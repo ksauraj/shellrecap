@@ -248,6 +248,31 @@ var (
 
 	calendarArt = marqueeArt("#:.##:#..#:##.:#.#:.", 10)
 
+	// squaresArt fills a little contribution graph, square by square
+	squaresArt = func() []string {
+		const pattern = ".#:#.##:.:#.#:##"
+		var frames []string
+		for n := 0; n <= len(pattern); n++ {
+			var rows []string
+			for r := 0; r < 3; r++ {
+				var row strings.Builder
+				for c := 0; c < 5; c++ {
+					if i := c*3 + r; i < n {
+						row.WriteByte(pattern[i])
+					} else {
+						row.WriteByte(' ')
+					}
+					if c < 4 {
+						row.WriteByte(' ')
+					}
+				}
+				rows = append(rows, "["+row.String()+"]")
+			}
+			frames = append(frames, strings.Join(rows, "\n"))
+		}
+		return append(frames, repeatFrame(frames[len(frames)-1], 8)...)
+	}()
+
 	gitArt = revealArt("o--o--o--o\n    \\   /\n     o-o")
 
 	stackArt = func() []string {

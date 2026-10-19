@@ -137,9 +137,21 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 			Art:      calendarArt,
 		}
 		slide.Lines = append(slide.Lines, "",
-			fmt.Sprintf("Biggest day: %s with %s commands", s.BusiestDay.Format("Mon, Jan 2"), n(s.BusiestDayCount)),
-			fmt.Sprintf("Longest streak: %s days in a row", n(s.LongestStreak)))
+			fmt.Sprintf("Biggest day: %s with %s commands", s.BusiestDay.Format("Mon, Jan 2"), n(s.BusiestDayCount)))
 		slides = append(slides, slide)
+
+		// Every day of the year, as a contribution graph
+		days := daysInYear(s.Year, time.Now())
+		heat := types.Slide{
+			Title:    "Your Year in Squares",
+			Headline: fmt.Sprintf("Active on %s of %s days", n(s.ActiveDays), formatInt(days)),
+			Lines:    heatmap(s.DayCounts, s.Year, time.Now(), inner, tone(), anim),
+			Art:      squaresArt,
+		}
+		heat.Lines = append(heat.Lines, "",
+			fmt.Sprintf("Longest streak: %s days in a row", n(s.LongestStreak)))
+		heat.Quotes = []string{streakQuip(s.ActiveDays, days)}
+		slides = append(slides, heat)
 	}
 
 	// Git
@@ -260,6 +272,30 @@ func AISlides(sections []ai.Section, footer string) []types.Slide {
 		})
 	}
 	return slides
+}
+
+// daysInYear is how many days of year have gone by at now, all of them
+// once the year is over
+func daysInYear(year int, now time.Time) int {
+	first := time.Date(year, time.January, 1, 0, 0, 0, 0, time.Local)
+	end := time.Date(year+1, time.January, 1, 0, 0, 0, 0, time.Local)
+	if today := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.Local); today.Before(end) {
+		end = today
+	}
+	return maxInt(int(end.Sub(first).Hours()/24+0.5), 1)
+}
+
+func streakQuip(active, days int) string {
+	switch share := active * 100 / maxInt(days, 1); {
+	case share >= 80:
+		return "Weekends? Never heard of them."
+	case share >= 50:
+		return "More color than grey. Consistency looks good on you."
+	case share >= 20:
+		return "You show up when it counts."
+	default:
+		return "Quality over quantity, right?"
+	}
 }
 
 func peakHourQuip(hour int) string {

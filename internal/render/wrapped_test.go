@@ -4,8 +4,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/ksauraj/shellrecap/internal/analyzer"
+	"github.com/ksauraj/shellrecap/internal/theme"
 )
 
 var ansiCodes = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -44,4 +47,29 @@ func TestStackSlideBarsLineUp(t *testing.T) {
 		return
 	}
 	t.Fatal("no stack slide")
+}
+
+func TestHeatmapFitsItsWidth(t *testing.T) {
+	days := map[string]int{"2026-01-01": 3, "2026-03-15": 40, "2026-06-30": 12, "2026-10-19": 7}
+	end := time.Date(2026, 10, 19, 0, 0, 0, 0, time.Local)
+	for _, width := range []int{30, 56, 80, 102, 120} {
+		lines := heatmap(days, 2026, end, width, theme.MauveAccent.Tone, Anim{Progress: 1})
+		if len(lines) != 9 {
+			t.Fatalf("heatmap at width %d has %d lines, want 9", width, len(lines))
+		}
+		for _, line := range lines {
+			if w := lipgloss.Width(line); w > width {
+				t.Errorf("heatmap at width %d has a %d column line: %q", width, w, plain(line))
+			}
+		}
+	}
+}
+
+func TestDaysInYear(t *testing.T) {
+	if d := daysInYear(2026, time.Date(2026, 1, 1, 9, 0, 0, 0, time.Local)); d != 1 {
+		t.Errorf("on Jan 1, %d days have gone by, want 1", d)
+	}
+	if d := daysInYear(2024, time.Date(2026, 3, 1, 0, 0, 0, 0, time.Local)); d != 366 {
+		t.Errorf("after a leap year, %d days have gone by, want 366", d)
+	}
 }

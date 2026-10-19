@@ -29,7 +29,7 @@ it into insights about how you work, plus a Spotify-Wrapped style recap of your 
 - Productivity metrics
 - Work pattern analysis
 - Tool usage statistics
-- A yearly recap with ASCII animations and optional AI-written slides
+- A yearly recap with ASCII animations, a heatmap of every day of your year and optional AI-written slides
 - Themes that match your terminal, whether it's dark, pitch black, light or Ubuntu purple
 - Share your recap as animated GIFs and pictures in one keypress
 
