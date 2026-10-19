@@ -37,13 +37,16 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 		return theme.Accents[len(slides)%len(theme.Accents)].Tone
 	}
 	// rows draws bars in the accent of the slide being built
-	rows := func(counts []analyzer.UsageCount, limit int) []string {
-		counts = analyzer.TopN(counts, limit)
-		lines := countRows(counts, newBarLayout(inner-2, counts), tone(), anim)
+	rowsIn := func(counts []analyzer.UsageCount, layout barLayout) []string {
+		lines := countRows(counts, layout, tone(), anim)
 		for i := range lines {
 			lines[i] = "  " + lines[i]
 		}
 		return lines
+	}
+	rows := func(counts []analyzer.UsageCount, limit int) []string {
+		counts = analyzer.TopN(counts, limit)
+		return rowsIn(counts, newBarLayout(inner-2, counts))
 	}
 
 	if s.TotalCommands == 0 {
@@ -174,13 +177,16 @@ func BuildWrappedSlides(s analyzer.WrappedStats, width int, anim Anim) []types.S
 			}
 		}
 		slide.Headline = strings.Join(names, " · ")
-		if len(s.Languages) > 0 {
+		// One layout for both lists, so their bars start at the same column
+		languages, devops := analyzer.TopN(s.Languages, 3), analyzer.TopN(s.DevOps, 3)
+		layout := newBarLayout(inner-2, languages, devops)
+		if len(languages) > 0 {
 			slide.Lines = append(slide.Lines, "Languages:")
-			slide.Lines = append(slide.Lines, rows(s.Languages, 3)...)
+			slide.Lines = append(slide.Lines, rowsIn(languages, layout)...)
 		}
-		if len(s.DevOps) > 0 {
+		if len(devops) > 0 {
 			slide.Lines = append(slide.Lines, "DevOps & Cloud:")
-			slide.Lines = append(slide.Lines, rows(s.DevOps, 3)...)
+			slide.Lines = append(slide.Lines, rowsIn(devops, layout)...)
 		}
 		if len(s.Editors) > 0 {
 			slide.Lines = append(slide.Lines, "",
