@@ -28,6 +28,13 @@ const (
 	// revealFrames is how many animation ticks bars take to grow and
 	// numbers take to count up when a view or slide appears
 	revealFrames = 8
+	// introFrames is how many animation ticks a slide's entrance takes
+	introFrames = 14
+	// slideRevealDelay and slideRevealFrames time the bars and numbers of
+	// a slide, which start once its lines begin to light up and keep
+	// growing after
+	slideRevealDelay  = 3
+	slideRevealFrames = 16
 	// minSplash keeps the loading animation on screen long enough to enjoy
 	minSplash = 4 * time.Second
 
@@ -93,6 +100,8 @@ type Model struct {
 	currentSectionIndex int
 	autoplay            bool
 	slideTickID         int
+	slideStart          int     // frame the current slide's countdown started at
+	slideHeld           float64 // how much of the slide had played when autoplay was paused
 	frame               int
 	revealStart         int // frame the current view or slide appeared at
 	share               shareState
@@ -171,6 +180,27 @@ func (m Model) revealProgress() float64 {
 	return 1 - math.Pow(1-p, 3)
 }
 
+// slideAnim is how far the slide on screen has got with its entrance and
+// its time on screen
+func (m Model) slideAnim() render.SlideAnim {
+	played := m.slideHeld
+	if m.autoplay {
+		played = math.Min(1, float64(m.frame-m.slideStart)/float64(slideInterval/animInterval))
+	}
+	intro := math.Min(1, float64(m.frame-m.revealStart)/introFrames)
+	return render.SlideAnim{
+		Frame:  m.frame - m.revealStart,
+		Intro:  1 - math.Pow(1-intro, 2),
+		Played: math.Max(played, 0),
+	}
+}
+
+// slideContentAnim is the reveal animation of the slide on screen
+func (m Model) slideContentAnim() render.Anim {
+	p := math.Max(0, math.Min(1, float64(m.frame-m.revealStart-slideRevealDelay)/slideRevealFrames))
+	return render.Anim{Progress: 1 - math.Pow(1-p, 2), Frame: m.frame}
+}
+
 func (m Model) anim() render.Anim {
 	return render.Anim{Progress: m.revealProgress(), Frame: m.frame}
 }
@@ -194,19 +224,24 @@ func (m *Model) switchTab(tab int) {
 func (m *Model) changeSlide(delta int) tea.Cmd {
 	total := len(m.slides())
 	m.currentSectionIndex = ((m.currentSectionIndex+delta)%total + total) % total
+	m.slideHeld = 0
 	m.restartReveal()
 	m.syncContent()
 	return m.scheduleSlideTick()
 }
 
-// scheduleSlideTick restarts the autoplay countdown
+// scheduleSlideTick restarts the autoplay countdown, picking up where it
+// was paused
 func (m *Model) scheduleSlideTick() tea.Cmd {
 	m.slideTickID++
 	if !m.autoplay {
 		return nil
 	}
+	m.slideStart = m.frame - int(m.slideHeld*float64(slideInterval/animInterval))
+	remaining := slideInterval - time.Duration(m.slideHeld*float64(slideInterval))
+	m.slideHeld = 0
 	id := m.slideTickID
-	return tea.Tick(slideInterval, func(time.Time) tea.Msg {
+	return tea.Tick(remaining, func(time.Time) tea.Msg {
 		return slideTickMsg{id: id}
 	})
 }
@@ -341,6 +376,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case " ":
 			if m.onWrappedTab() {
+				if m.autoplay {
+					m.slideHeld = m.slideAnim().Played
+				}
 				m.autoplay = !m.autoplay
 				m.syncContent()
 				return m, m.scheduleSlideTick()
@@ -427,7 +465,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // slides returns the locally computed Wrapped slides followed by the AI ones
 func (m Model) slides() []types.Slide {
-	slides := render.BuildWrappedSlides(m.wrappedStats, m.width, m.anim())
+	slides := render.BuildWrappedSlides(m.wrappedStats, m.width, m.slideContentAnim())
 
 	last := &slides[len(slides)-1]
 	switch m.aiStatus {
@@ -512,7 +550,7 @@ func (m *Model) syncContent() {
 			status = "paused"
 		}
 		content = render.RenderSlide(slides[m.currentSectionIndex], label, status,
-			m.currentSectionIndex, len(slides), m.frame-m.revealStart, m.viewport.Width)
+			m.currentSectionIndex, len(slides), m.viewport.Width, m.slideAnim())
 	}
 	m.viewport.SetContent(content)
 }

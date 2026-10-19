@@ -131,7 +131,9 @@ func (r Recap) slides(cols int, anim render.Anim) []string {
 	cards := make([]string, len(built))
 	for i, slide := range built {
 		slide.Footer = ""
-		cards[i] = render.RenderSlide(slide, label, "", i, len(built), anim.Frame, cols)
+		// The entrance plays along with the numbers counting up
+		cards[i] = render.RenderSlide(slide, label, "", i, len(built), cols,
+			render.SlideAnim{Frame: anim.Frame, Intro: anim.Progress, Played: 1})
 	}
 	return cards
 }

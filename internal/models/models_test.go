@@ -265,6 +265,36 @@ func TestSlideNavigationAndAutoplay(t *testing.T) {
 	}
 }
 
+func TestSlideTimerPausesAndResumes(t *testing.T) {
+	m := testModel(t, "")
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	for i := 0; i < 50; i++ {
+		m = update(t, m, animTickMsg{})
+	}
+	if played := m.slideAnim().Played; played < 0.45 || played > 0.55 {
+		t.Fatalf("halfway through a slide, %.2f of it has played", played)
+	}
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeySpace})
+	for i := 0; i < 30; i++ {
+		m = update(t, m, animTickMsg{})
+	}
+	if played := m.slideAnim().Played; played < 0.45 || played > 0.55 {
+		t.Errorf("the timer moved to %.2f while paused", played)
+	}
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeySpace})
+	m = update(t, m, animTickMsg{})
+	if played := m.slideAnim().Played; played < 0.45 || played > 0.56 {
+		t.Errorf("the timer resumed at %.2f, not where it was paused", played)
+	}
+
+	m = update(t, m, tea.KeyMsg{Type: tea.KeyRight})
+	if played := m.slideAnim().Played; played != 0 {
+		t.Errorf("a new slide starts with %.2f played", played)
+	}
+}
+
 func TestRevealAnimation(t *testing.T) {
 	m := testModel(t, "")
 	m.switchTab(0)

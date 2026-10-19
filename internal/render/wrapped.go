@@ -3,6 +3,8 @@ package render
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"strings"
 	"time"
 
@@ -313,24 +315,70 @@ func peakHourQuip(hour int) string {
 	}
 }
 
+// SlideAnim is how far a slide's animations have got
+type SlideAnim struct {
+	// Frame counts animation ticks since the slide appeared and drives
+	// its art
+	Frame int
+	// Intro is how far the slide's entrance has got, from 0 to 1: the
+	// title types itself, the headline glides in, the lines light up one
+	// after another and the quote fades in
+	Intro float64
+	// Played is how much of its time on screen the slide has used up,
+	// from 0 to 1, which fills its segment of the progress bar
+	Played float64
+}
+
+// Settled is a slide with every animation finished
+func Settled(frame int) SlideAnim {
+	return SlideAnim{Frame: frame, Intro: 1, Played: 1}
+}
+
+// ansiCodes match the color codes lipgloss writes
+var ansiCodes = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// stage maps the part of the entrance between from and to onto 0 to 1
+func stage(intro, from, to float64) float64 {
+	return math.Max(0, math.Min(1, (intro-from)/(to-from)))
+}
+
+// fadeIn renders text that fades in from the background as t goes from 0
+// to 1, ending in the given style. Faded text is drawn without its own
+// colors, so it keeps its size and the slide doesn't jump around.
+func fadeIn(text string, t float64, style lipgloss.Style) string {
+	switch {
+	case t >= 1:
+		return style.Render(text)
+	case t >= 0.5:
+		return theme.Faint.Render(ansiCodes.ReplaceAllString(text, ""))
+	default:
+		return theme.Track.Render(ansiCodes.ReplaceAllString(text, ""))
+	}
+}
+
 // RenderSlide renders one Recap slide, anchored at the top left like the
 // cards on the other tabs. status follows the slide counter, e.g. "auto".
-// frame counts animation ticks since the slide appeared and drives its art.
-func RenderSlide(slide types.Slide, label, status string, index, total, frame, width int) string {
+func RenderSlide(slide types.Slide, label, status string, index, total, width int, anim SlideAnim) string {
 	accent := theme.Accents[index%len(theme.Accents)].Color
 	inner := slideInner(width)
 	muted := theme.Faint
 
-	// Story-style progress bar
+	// Story-style progress bar, the current segment filling up as the
+	// slide plays
 	var progress string
 	if segment := (inner - (total - 1)) / total; segment >= 1 {
 		var segments []string
 		for i := 0; i < total; i++ {
-			style := theme.Track
-			if i <= index {
-				style = lipgloss.NewStyle().Foreground(accent)
+			filled := 0
+			switch {
+			case i < index:
+				filled = segment
+			case i == index:
+				filled = maxInt(int(math.Round(anim.Played*float64(segment))), 1)
 			}
-			segments = append(segments, style.Render(strings.Repeat("━", segment)))
+			filled = minInt(filled, segment)
+			segments = append(segments, lipgloss.NewStyle().Foreground(accent).Render(strings.Repeat("━", filled))+
+				theme.Track.Render(strings.Repeat("━", segment-filled)))
 		}
 		progress = strings.Join(segments, " ")
 	}
@@ -348,32 +396,52 @@ func RenderSlide(slide types.Slide, label, status string, index, total, frame, w
 	}
 	top := muted.Render(label + strings.Repeat(" ", gap) + counter)
 
-	head := lipgloss.NewStyle().Bold(true).Foreground(accent).Render(slide.Title)
-	if slide.Headline != "" {
-		head += "\n\n" + theme.Bold.Render(slide.Headline)
-	}
 	// The art sits to the right of the title when there's room for both
+	var art string
+	textWidth := inner
 	if len(slide.Art) > 0 {
-		art := artFrame(slide.Art, frame/ArtTicks)
-		if textWidth := inner - lipgloss.Width(art) - 2; textWidth >= 28 {
-			head = lipgloss.JoinHorizontal(lipgloss.Top,
-				lipgloss.NewStyle().Width(textWidth).Render(head), "  ",
-				lipgloss.NewStyle().Foreground(accent).Render(art))
+		art = artFrame(slide.Art, anim.Frame/ArtTicks)
+		if w := inner - lipgloss.Width(art) - 2; w >= 28 {
+			textWidth = w
+		} else {
+			art = ""
 		}
+	}
+
+	// The title types itself, with a cursor while it's typing
+	title := []rune(slide.Title)
+	typed := int(math.Round(stage(anim.Intro, 0, 0.3) * float64(len(title))))
+	head := lipgloss.NewStyle().Bold(true).Foreground(accent).Render(string(title[:typed]))
+	if typed < len(title) {
+		head += lipgloss.NewStyle().Foreground(accent).Render("▌")
+	}
+	// The headline glides in from the right as it fades in
+	if slide.Headline != "" {
+		t := stage(anim.Intro, 0.15, 0.45)
+		glide := minInt(int(math.Round((1-t)*6)), maxInt(textWidth-lipgloss.Width(slide.Headline), 0))
+		head += "\n\n" + strings.Repeat(" ", glide) + fadeIn(slide.Headline, t, theme.Bold)
+	}
+	if art != "" {
+		head = lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().Width(textWidth).Render(head), "  ",
+			lipgloss.NewStyle().Foreground(accent).Render(art))
 	}
 
 	parts := []string{progress, top, "", head}
 	if len(slide.Lines) > 0 {
 		parts = append(parts, "")
-		for _, line := range slide.Lines {
-			parts = append(parts, theme.Normal.Render(line))
+		// Lines light up one after another
+		for i, line := range slide.Lines {
+			at := 0.25 + 0.35*float64(i)/float64(len(slide.Lines))
+			parts = append(parts, fadeIn(line, stage(anim.Intro, at, at+0.08), theme.Normal))
 		}
 	}
 	if len(slide.Quotes) > 0 {
 		parts = append(parts, "")
 		quote := lipgloss.NewStyle().Italic(true).Foreground(theme.Subtext)
+		t := stage(anim.Intro, 0.75, 1)
 		for _, q := range slide.Quotes {
-			parts = append(parts, quote.Render("“"+q+"”"))
+			parts = append(parts, fadeIn("“"+q+"”", t, quote))
 		}
 	}
 	if slide.Footer != "" {

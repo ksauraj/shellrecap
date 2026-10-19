@@ -1,7 +1,6 @@
 package render
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -10,8 +9,6 @@ import (
 	"github.com/ksauraj/shellrecap/internal/analyzer"
 	"github.com/ksauraj/shellrecap/internal/theme"
 )
-
-var ansiCodes = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func plain(s string) string {
 	return ansiCodes.ReplaceAllString(s, "")
