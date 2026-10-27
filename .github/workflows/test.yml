@@ -14,12 +14,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         go: [stable]
         include:
-          # The oldest Go that go.mod allows
+          # The oldest Go that go.mod allows. 1.25 because golang.org/x/image
+          # v0.45.0 and golang.org/x/text v0.41.0, the first releases without
+          # the open advisories, both require it
           - os: ubuntu-latest
-            go: '1.21'
+            go: '1.25'
     name: test (${{ matrix.os }}, go ${{ matrix.go }})
     runs-on: ${{ matrix.os }}
-    # go.mod names a newer toolchain for source builds; without this the 1.21
+    # go.mod names a newer toolchain for source builds; without this the 1.25
     # leg would quietly switch to it and stop testing the minimum
     env:
       GOTOOLCHAIN: local
@@ -47,3 +49,20 @@ jobs:
         run: |
           go build -o bin/ ./cmd/shellrecap
           bin/shellrecap --version
+
+  # Fails on any known vulnerability the code can actually reach, in the
+  # standard library or a dependency. Pinned, so CI does not run whatever
+  # govulncheck happens to be newest.
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...

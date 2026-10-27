@@ -94,6 +94,11 @@ jobs:
             GOOS=$os GOARCH=$arch go build -ldflags "$ldflags" -o $output ./cmd/shellrecap
           done
 
+      # Binary mode checks every module linked in, not only the code paths
+      # source mode can trace, so nothing with a known advisory is published.
+      - name: Refuse to publish a binary with known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -mode=binary dist/shellrecap-linux-amd64
+
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}

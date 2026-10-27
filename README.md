@@ -155,7 +155,7 @@ your color scheme. Your choice is remembered.
 ### Build from Source
 
 Requirements:
-- Go 1.20 or higher
+- Go 1.25 or higher
 - A Gemini and/or Groq API key (optional, for the AI-written slides)
 
 ```bash
