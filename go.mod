@@ -2,6 +2,11 @@ module github.com/ksauraj/shellrecap
 
 go 1.21
 
+// Builds from source (go install) pick up a toolchain that distrusts the
+// compromised eMudhra intermediates (GO-2026-6809). The go line above is
+// still the minimum, and CI keeps testing it with GOTOOLCHAIN=local.
+toolchain go1.27.3
+
 require (
 	github.com/charmbracelet/bubbles v0.16.1
 	github.com/charmbracelet/bubbletea v0.24.2

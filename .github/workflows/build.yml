@@ -24,6 +24,23 @@ jobs:
         with:
           go-version: stable
 
+      # Go releases before 1.27.3 / 1.26.10 still trust the compromised eMudhra
+      # intermediates (GO-2026-6809), which lets anyone holding the leaked keys
+      # impersonate the AI APIs the app calls. Refuse to ship from one.
+      - name: Refuse a toolchain that trusts the eMudhra intermediates
+        run: |
+          v=$(go env GOVERSION)
+          v=${v#go}
+          case "$v" in
+            1.26.*) min=1.26.10 ;;
+            *) min=1.27.3 ;;
+          esac
+          if [ "$(printf '%s\n%s\n' "$min" "$v" | sort -V | head -n1)" != "$min" ]; then
+            echo "go$v predates the eMudhra distrust; need go$min or newer" >&2
+            exit 1
+          fi
+          echo "go$v carries the eMudhra distrust"
+
       - name: Test
         run: go test ./...
 
